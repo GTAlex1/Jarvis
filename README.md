@@ -4,9 +4,15 @@ Asistente gráfico que organiza ventanas entre monitores con órdenes en españo
 
 ## Descargar y abrir
 
-1. Abre [Aplicación de Windows](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml) con tu sesión de GitHub iniciada. En la última ejecución correcta, descarga **JARVIS-Windows-x64** desde **Artifacts**.
-2. Extrae el ZIP y abre `JARVIS.exe`. El ejecutable incluye Python.
+1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases/latest).
+2. Abre el ejecutable desde una carpeta en la que puedas guardar archivos.
 3. Con VS Code abierto, escribe `VSCode izquierda` y pulsa **Intro**.
+
+## Actualizaciones
+
+JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0.
+
+Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub Actions compila y prueba la aplicación en Windows antes de publicar el ejecutable.
 
 ## Órdenes
 

@@ -3,9 +3,10 @@ from queue import Empty, Queue
 from threading import Thread
 import sys
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from jarvis import Desktop, execute, normalize
+from updater import VERSION, install_update, latest_update
 
 BG = "#060b17"
 PANEL = "#0d172b"
@@ -146,6 +147,58 @@ def main():
 
     for command in ("aplicaciones", "ventanas", "pantallas", "ayuda"):
         button(toolbar, command.capitalize(), lambda key=command: run(key)).pack(fill="x", pady=3)
+
+    if getattr(sys, "frozen", False):
+        available = None
+        updates = Queue()
+        update_status = tk.StringVar(value=f"Versión {VERSION}")
+
+        def update_worker(installing):
+            try:
+                result = install_update(available) if installing else latest_update()
+                updates.put((installing, result, None))
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                updates.put((installing, None, error))
+
+        def start_update(installing=False):
+            update_button.configure(state="disabled")
+            update_status.set("Descargando…" if installing else "Buscando…")
+            Thread(target=update_worker, args=(installing,), daemon=True).start()
+
+        def update_clicked():
+            if available is None:
+                start_update()
+            elif messagebox.askyesno("JARVIS", f"¿Instalar {available[0]} y reiniciar JARVIS?", parent=root):
+                start_update(installing=True)
+
+        def poll_updates():
+            nonlocal available
+            try:
+                installing, result, error = updates.get_nowait()
+            except Empty:
+                pass
+            else:
+                if installing and error is None:
+                    root.destroy()
+                    return
+                if error is not None:
+                    update_status.set("Error de actualización")
+                    if installing:
+                        messagebox.showerror("JARVIS", str(error), parent=root)
+                else:
+                    available = result
+                    update_status.set(f"Disponible {available[0]}" if available else f"Versión {VERSION} · al día")
+                update_button.configure(
+                    state="normal", text="Actualizar y reiniciar" if available else "Buscar actualizaciones",
+                )
+            root.after(120, poll_updates)
+
+        tk.Label(rail, textvariable=update_status, bg=PANEL, fg=MUTED,
+                 font=(FONT, 9)).pack(side="bottom", pady=(4, 10))
+        update_button = button(rail, "Buscar actualizaciones", update_clicked)
+        update_button.pack(side="bottom", fill="x", padx=12)
+        root.after(350, start_update)
+        poll_updates()
 
     form = tk.Frame(root, bg=BG)
     form.grid(row=3, column=1, sticky="ew", padx=(0, 16), pady=(12, 18))
