@@ -14,12 +14,15 @@ def normalize(value):
     ).strip().rstrip(".!?")
 
 
+POSITION = r"izquierda|izquieda|derecha|pantalla completa|maximiza(?:do|da)?"
+SCREEN = r"(?: (?:(?:de|en) (?:la |el )?)?(?:pantalla|monitor) (\d+))?"
 MOVE = re.compile(
     r"(?:oye jarvis[, ]+)?(?:mueve|pon|coloca) "
     r"(?:(?:la )?(?:ventana|pestana)(?: de)? )?"
-    r"(?:(?:el|la) )?(.+?) (?:a|en) (?:la )?(?:mitad )?(izquierda|derecha)"
-    r"(?: (?:de|del) (?:la |el )?(?:pantalla|monitor) (\d+))?"
+    rf"(?:(?:el|la) )?(.+?) (?:a|en) (?:la )?(?:mitad )?({POSITION}){SCREEN}"
 )
+SHORT_MOVE = re.compile(rf"(?:el |la )?(.+?) ({POSITION}){SCREEN}")
+MAXIMIZE = re.compile(rf"maximiza (?:el |la )?(.+?){SCREEN}")
 APP_NAMES = {
     "code": ("Visual Studio Code", "VSCode", "VS Code"),
     "chrome": ("Google Chrome", "Chrome"),
@@ -36,10 +39,17 @@ APP_NAMES = {
 
 
 def parse_move(command):
-    match = MOVE.fullmatch(normalize(command))
-    if match:
-        title, side, screen = match.groups()
-        return title, side, int(screen) if screen else None
+    command = " ".join(normalize(command).split())
+    if match := MAXIMIZE.fullmatch(command):
+        title, screen = match.groups()
+        return title, "completa", int(screen) if screen else None
+    if match := MOVE.fullmatch(command) or SHORT_MOVE.fullmatch(command):
+        title, position, screen = match.groups()
+        if position == "izquieda":
+            position = "izquierda"
+        elif position.startswith(("pantalla", "maximiza")):
+            position = "completa"
+        return title, position, int(screen) if screen else None
 
 
 def app_label(executable):
@@ -183,10 +193,27 @@ class Desktop:
         handle, name, _ = matches[0]
         if self.api.IsZoomed(handle) or self.api.IsIconic(handle):
             self.api.ShowWindow(handle, 9)  # SW_RESTORE
-        target = half(screens[screen][0], side)
+        bounds = screens[screen][0]
+        if side == "completa":
+            left, top, right, bottom = bounds
+            restored = w.RECT()
+            if not self.api.GetWindowRect(handle, c.byref(restored)):
+                raise c.WinError(c.get_last_error())
+            target = (
+                left, top, min(right - left, restored.right - restored.left),
+                min(bottom - top, restored.bottom - restored.top),
+            )
+        else:
+            target = half(bounds, side)
         flags = 0x0014  # SWP_NOZORDER | SWP_NOACTIVATE
         if not self.api.SetWindowPos(handle, None, *target, flags):
             raise c.WinError(c.get_last_error())
+
+        if side == "completa":
+            self.api.ShowWindow(handle, 3)  # SW_MAXIMIZE
+            if self.api.IsZoomed(handle):
+                return f"Maximicé «{name}» en la pantalla {screen}."
+            return f"«{name}» no admitió maximizarse en la pantalla {screen}."
 
         actual = w.RECT()
         if not self.api.GetWindowRect(handle, c.byref(actual)):
@@ -229,7 +256,7 @@ def listen():
 
 HELP = """Escribe una orden o pulsa Intro para usar el micrófono.
   Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
-  Pon el Explorador a la mitad derecha del monitor 2
+  VSCode izquierda | Chrome derecha monitor 2 | Visual Studio Code pantalla completa
   pantallas | ventanas | ayuda | salir"""
 
 

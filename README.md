@@ -26,7 +26,7 @@ La consola sigue disponible con `python jarvis.py`.
 | `ayuda` | Muestra los ejemplos disponibles. |
 | `salir` | Cierra el asistente. |
 
-Puedes decir «mueve Chrome a la izquierda» o «pon el Explorador a la derecha». JARVIS busca el nombre del programa, su ejecutable o el título de la ventana. Si hay varias coincidencias, usa un título más concreto de la lista de **Ventanas**.
+También puedes escribir «VSCode izquierda», «Visual Studio Code pantalla completa» o «Chrome derecha monitor 2». Pantalla completa maximiza la ventana en el escritorio de Windows. Puedes decir «mueve Chrome a la izquierda» o «pon el Explorador a la derecha». JARVIS busca el nombre del programa, su ejecutable o el título de la ventana. Si hay varias coincidencias, usa un título más concreto de la lista de **Ventanas**.
 
 Si omites el número de pantalla, JARVIS usa la principal. El cálculo respeta el área de trabajo para dejar sitio a la barra de tareas.
 
