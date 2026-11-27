@@ -9,6 +9,7 @@ import sys
 from threading import Event
 from time import monotonic
 
+from pcm_resample import DownsampleFilter
 from voice_diagnostics import LOG
 from voice_recognition import RATE
 from windows_audio import default_input, mapper_names, wasapi_endpoint_ids
@@ -19,6 +20,7 @@ except ImportError:
     audioop = None
 
 BACKENDS = ("Windows WASAPI", "MME", "Windows DirectSound", "ASIO")
+AUTO_ORDER = ("MME", "Windows DirectSound", "Windows WASAPI", "ASIO")
 DIGITAL_SILENCE = 1.2
 
 
@@ -74,14 +76,25 @@ class Inputs:
         match = next((item for item in self.devices if item.matches(selection)), None)
         return match.key if match else selection
 
-    def routes_for(self, selection, endpoint=None):
+    def migrate(self, selection, interface):
+        key = self.key_for(selection)
+        if selection != key and not interface:
+            sources = (*self.mappers, *(route for device in self.devices for route in device.routes))
+            match = next((route for route in sources if route.legacy_key == selection), None)
+            if match is not None:
+                interface = match.api
+        return key, interface
+
+    def routes_for(self, selection, endpoint=None, interface="", preferred=""):
+        prefer_mapper = selection if self.uses_default(selection) else ""
+        selection, interface = self.migrate(selection, interface)
         fallback = self.mappers
         default = next((item for item in self.devices
                         if endpoint and any(r.endpoint == endpoint for r in item.routes)), None)
         if default is None:
             default = next((item for api in BACKENDS for item in self.devices
                             if any(r.default and r.api == api for r in item.routes)), None)
-        if self.uses_default(selection):
+        if not selection:
             primary = default
         else:
             primary = next((item for item in self.devices if item.matches(selection)), None)
@@ -90,8 +103,14 @@ class Inputs:
             if primary != default:
                 fallback = ()
         routes = (primary.routes if primary else ()) + fallback
-        prefer_mapper = selection if self.uses_default(selection) else ""
-        return sorted(routes, key=lambda r: (r.legacy_key != prefer_mapper, BACKENDS.index(r.api), not r.mapper))
+        if interface:
+            routes = tuple(route for route in routes if route.api == interface)
+            if not routes:
+                raise CaptureError(f"La entrada seleccionada no está disponible mediante {interface}.")
+        return sorted(routes, key=lambda r: (
+            r.legacy_key != prefer_mapper, preferred not in (r.legacy_key, r.api), AUTO_ORDER.index(r.api),
+            r.mapper if selection else not r.mapper,
+        ))
 
 
 def group_routes(routes):
@@ -175,14 +194,14 @@ class AudioFormat:
 
 
 def input_formats(route):
-    rates = (route.rate, RATE, 48000, 44100, 32000, 22050, 96000, 8000)
+    rates = (RATE, 48000, 44100, 32000, 22050, 96000, 8000, route.rate)
     channels = dict.fromkeys((1, min(2, route.channels), route.channels))
     for rate in dict.fromkeys(rate for rate in rates if rate > 0):
         for count in channels:
             yield AudioFormat(rate, count)
     if route.api == BACKENDS[0]:
         yield AudioFormat(RATE, 1, True)
-        for rate in dict.fromkeys(rate for rate in (route.rate, 48000, 44100, RATE) if rate > 0):
+        for rate in dict.fromkeys(rate for rate in (RATE, 48000, 44100, route.rate) if rate > 0):
             for count in channels:
                 yield AudioFormat(rate, count, dtype="float32")
 
@@ -193,8 +212,11 @@ class PcmConverter:
             raise ImportError("Instala audioop-lts desde requirements-voice.txt.")
         self.format = audio_format
         self.state = None
+        self.filter = DownsampleFilter(audio_format.rate, RATE) if audio_format.rate > RATE else None
 
     def convert(self, raw):
+        if not raw:
+            return raw
         if self.format.dtype == "float32":
             floats = array("f")
             floats.frombytes(raw)
@@ -209,18 +231,25 @@ class PcmConverter:
         return self.resample(raw)
 
     def resample(self, raw):
+        if self.filter:
+            raw = self.filter.apply(raw)
+            if self.filter.step > 1:
+                return raw
         if self.format.rate != RATE:
             raw, self.state = audioop.ratecv(raw, 2, 1, self.format.rate, RATE, self.state)
         return raw
 
     def reset(self):
         self.state = None
+        if self.filter:
+            self.filter.reset()
 
 
 class Microphone:
     def __init__(self, sd, route, audio_format, native_settings, current_default, expected_default):
         self.sd = sd
         self.route = route
+        self.available_routes = ()
         self.format = audio_format
         self.current_default = current_default
         self.expected_default = expected_default
@@ -326,7 +355,7 @@ def probe(capture, changed):
 
 
 @contextmanager
-def capture_input(catalog, selection, changed, rejected=()):
+def capture_input(catalog, selection, changed, rejected=(), interface="", preferred=""):
     with ExitStack() as session, portaudio() as sd:
         current, endpoint = None, None
         if sys.platform == "win32":
@@ -337,7 +366,7 @@ def capture_input(catalog, selection, changed, rejected=()):
                     current = read_default
             except OSError as error:
                 LOG.warning("captura predeterminado: %s", error)
-        routes = catalog.routes_for(selection, endpoint)
+        routes = catalog.routes_for(selection, endpoint, interface, preferred)
         silent = None
         failures = []
         for route in routes:
@@ -366,6 +395,7 @@ def capture_input(catalog, selection, changed, rejected=()):
                         yield None
                         return
                     if capture.verified:
+                        capture.available_routes = routes
                         LOG.info("captura activa %s", capture.label)
                         yield capture
                         return
@@ -379,6 +409,7 @@ def capture_input(catalog, selection, changed, rejected=()):
                 capture = session.enter_context(Microphone(sd, route, fmt, options, current, endpoint))
             except sd.PortAudioError as error:
                 raise CaptureError(f"No se pudo reabrir la entrada silenciosa: {error}") from error
+            capture.available_routes = routes
             yield capture
             return
         if changed.is_set():

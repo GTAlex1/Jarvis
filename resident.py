@@ -127,6 +127,7 @@ class Resident:
         self.panel.open_voice_settings(
             self.voice_options, self.save_voice, self.voice.refresh_catalog,
             self.voice.test_microphone, self.voice.cancel_test, lambda: self.voice.meter,
+            lambda: self.voice.test_progress,
         )
 
     def show_catalog(self, *catalog):

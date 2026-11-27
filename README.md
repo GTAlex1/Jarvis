@@ -28,13 +28,13 @@ La animación se detiene al ocultar o minimizar el panel.
 
 La detección y el reconocimiento funcionan en el equipo. El ejecutable incluye los modelos y puede usarlos sin conexión ni claves. JARVIS procesa el audio en memoria, descarta la entrada durante su propia respuesta y guarda las preferencias de voz en tu cuenta de Windows. El historial del panel muestra texto durante la sesión.
 
-### Captura de micrófono en 0.6.1
+### Probar el reconocimiento en 0.6.2
 
-**Predeterminado de Windows** sigue la entrada que selecciones en Configuración de Windows. Las entradas de un mismo micrófono se agrupan cuando pueden identificarse sin ambigüedad. JARVIS prueba el formato del dispositivo y, cuando es necesario, prueba otras frecuencias o rutas de Windows (WASAPI, MME y DirectSound). Si eliges un micrófono concreto, intenta sus rutas y vuelve a buscarlo si lo desconectas.
+En **Ajustes de voz**, elige **Predeterminado de Windows** o un micrófono físico. En **Interfaz de captura** puedes elegir **Automática**, **MME**, **DirectSound** o **WASAPI**. El micrófono aparece una vez aunque Windows lo exponga mediante varias interfaces. Con el dispositivo predeterminado y MME se puede usar el asignador de sonido de Windows. Con DirectSound se puede usar su controlador primario.
 
-En **Ajustes de voz**, selecciona **Realtek** o **Predeterminado de Windows** y pulsa **Probar micrófono**. Habla mientras miras **Nivel del micrófono**. La prueba dura cinco segundos una vez abierta la entrada, funciona con la escucha permanente apagada y muestra la ruta, la frecuencia y si recibió señal. El interruptor **Micrófono** de la bandeja debe estar marcado.
+Pulsa **Probar micrófono** y di «abre Spotify». La prueba muestra por separado **Señal recibida**, **Voz detectada** y **Palabras reconocidas**, con transcripción en directo. Con **Automática**, si falla la prueba de reconocimiento, JARVIS puede pasar a otra ruta. Repite la frase cuando cambie la interfaz que muestra el medidor. La prueba dura unos cinco segundos por ruta y las palabras aparecen durante la sesión de prueba.
 
-Los errores de captura y reconocimiento se registran en `%LOCALAPPDATA%\JARVIS\voz.log`. El archivo contiene detalles técnicos, como el código de error del controlador y el formato probado. El audio y las transcripciones quedan fuera del registro.
+Cuando una ruta funciona en la prueba automática, JARVIS la prioriza durante esa sesión. Puedes guardar una interfaz concreta para próximos arranques. El registro `%LOCALAPPDATA%\JARVIS\voz.log` guarda detalles técnicos de la captura y el reconocimiento. La transcripción y el audio de la prueba se procesan en memoria.
 
 ## Actualizaciones
 
@@ -91,3 +91,8 @@ python jarvis_gui.py
 Para el dictado manual de consola, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. Con **Micrófono** habilitado, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
 
 Las pruebas que requieren tu equipo están en la [lista de comprobación manual](Guia.md#pruebas-con-tu-micrófono). Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).
+
+
+## Distribución y desarrollo
+
+El ejecutable incluye las dependencias y los modelos esenciales. El reconocimiento y los comandos funcionan localmente en CPU. Consulta los [requisitos del proyecto](AGENTS.md) y la [hoja de ruta](ROADMAP.md).

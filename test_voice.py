@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from preferences import VoiceSettings
-from voice_recognition import MODEL_PATH, TIMEOUT, Conversation, Transcript
-from voice_service import VoiceService
+from voice_recognition import MODEL_PATH, TIMEOUT, Conversation, MicRecognition, Transcript
+from voice_service import RecognitionRouteError, VoiceService
 
 
 class ConversationTest(unittest.TestCase):
@@ -88,7 +88,7 @@ class VoiceServiceTest(unittest.TestCase):
                 waiting.set()
 
         service = VoiceService(Mock(), state_change, Mock())
-        capture = Mock(level=0, label="Micrófono simulado")
+        capture = Mock(level=0, label="Micrófono simulado", available_routes=())
         def read():
             service.changed.wait(0.02)
             return None
@@ -97,7 +97,9 @@ class VoiceServiceTest(unittest.TestCase):
         microphone = Mock()
         microphone.__enter__ = Mock(return_value=capture)
         microphone.__exit__ = Mock(return_value=False)
-        with (patch("voice_service.input_devices", return_value=[]),
+        from audio_input import Inputs
+
+        with (patch("voice_service.input_devices", return_value=Inputs((), ())),
               patch("voice_service.capture_input", side_effect=[OSError("desconectado"), microphone]),
               patch("voice_service.WakeDetector", return_value=Mock(feed=Mock(return_value=None))),
               patch("voice_service.RETRY_SECONDS", 0.01)):
@@ -111,13 +113,64 @@ class VoiceServiceTest(unittest.TestCase):
         microphone.__exit__.assert_called_once()
 
 
+    def test_preview_switches_backend_when_a_signal_has_no_words(self):
+        from contextlib import nullcontext
+
+        from audio_input import BACKENDS, Route, group_routes
+
+        mme = Route(1, "Micrófono", BACKENDS[1], 44100, 1, "mme", default=True)
+        ds = Route(2, "Micrófono", BACKENDS[2], 48000, 1, "ds")
+        devices = group_routes([mme, ds])
+        service = VoiceService(Mock(), Mock(), Mock(), Mock())
+        attempted = []
+
+        def open_input(_devices, _selection, _event, rejected, _api):
+            route = next(route for route in (mme, ds) if route.index not in rejected)
+            attempted.append(route.api)
+            return nullcontext(Mock(route=route, label=route.api))
+
+        with (patch("voice_service.input_devices", return_value=devices),
+              patch("voice_service.capture_input", side_effect=open_input),
+              patch.object(service, "preview", side_effect=[
+                  MicRecognition(True, False, "", False), MicRecognition(True, True, "abre spotify", True),
+              ])):
+            service.run_test("", "", microphone=True)
+        self.assertEqual(attempted, [BACKENDS[1], BACKENDS[2]])
+        self.assertEqual(service.preferred_routes[""], ds.legacy_key)
+        self.assertEqual(service.test_progress.text, "abre spotify")
+        service.submit.assert_not_called()
+
+    def test_two_unrecognized_activations_trigger_automatic_fallback(self):
+        service = VoiceService(Mock(), Mock(), Mock())
+        exchange = Mock(active=None)
+        iterations = iter((object(), None, object(), None))
+
+        def receive(*_):
+            exchange.active = next(iterations)
+            return None
+
+        exchange.feed.side_effect = receive
+        capture = Mock(level=30, label="Micrófono", read=Mock(return_value=bytes(1600)))
+        with patch("voice_service.Conversation", return_value=exchange):
+            with self.assertRaises(RecognitionRouteError):
+                service.listen(capture, Mock(), VoiceSettings(), automatic=True)
+        service.submit.assert_not_called()
+
+    def test_older_settings_get_automatic_interface_without_resetting_other_fields(self):
+        from preferences import voice_settings
+
+        saved = '{"enabled":true,"device":"realtek","voice":"Helena","volume":42,"sensitivity":4}'
+        with patch("preferences.read_value", return_value=saved):
+            self.assertEqual(voice_settings(), VoiceSettings(True, "realtek", "Helena", 42, 4))
+
+
 @unittest.skipUnless((MODEL_PATH / "am" / "final.mdl").is_file(), "Requiere el modelo de voz local")
 class SyntheticAudioTest(unittest.TestCase):
     def test_recognition_of_synthetic_spanish_commands(self):
         from voice_probe import test_audio
 
         report = test_audio(Path(__file__).with_name("tests") / "voice")
-        self.assertEqual(len(report), 4)
+        self.assertEqual(report["reconocimiento_192khz"], "correcto")
 
 
 @unittest.skipUnless(sys.platform == "win32", "Requiere el registro de Windows")
@@ -131,7 +184,7 @@ class WindowsVoicePreferencesTest(unittest.TestCase):
         with patch("preferences.SETTINGS_KEY", path):
             try:
                 self.assertEqual(voice_settings(), VoiceSettings())
-                custom = VoiceSettings(True, "Micrófono USB", "Microsoft Helena", 45, 4)
+                custom = VoiceSettings(True, "Micrófono USB", "Microsoft Helena", 45, 4, "MME")
                 save_voice_settings(custom)
                 self.assertEqual(voice_settings(), custom)
             finally:

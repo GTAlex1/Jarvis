@@ -8,7 +8,9 @@ import zlib
 from commands import parse
 from audio_input import AudioFormat, PcmConverter, input_devices
 from voice_audio import installed_voices, test_synthesis
-from voice_recognition import CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, SpanishRecognizer, WakeDetector, spanish_model
+from voice_recognition import (
+    CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, spanish_model,
+)
 
 
 def fixture(folder, name):
@@ -41,7 +43,33 @@ def test_audio(folder):
         if states != expected_states or order != expected_order:
             raise AssertionError(f"{name}: estados {states}, orden {order}")
         report[name] = "correcto"
+    high_rate_command(model, command)
+    report["reconocimiento_192khz"] = "correcto"
     return report
+
+
+def high_rate_command(model, command):
+    import audioop
+    import numpy as np
+
+    source = np.frombuffer(command, dtype="<i2")
+    source = np.pad(source, (RATE // 5, RATE))
+    audio = np.repeat(source, 12).astype(np.float32)
+    frequencies = np.arange(len(audio), dtype=np.float64)
+    audio += 9000 * np.sin(2 * np.pi * 31000 * frequencies / 192000)
+    pcm = audio.clip(-32768, 32767).astype("<i2").tobytes()
+    converter = PcmConverter(AudioFormat(192000, 1))
+    detector = RecognitionProbe(SpanishRecognizer(model))
+    chunk = 192000 * SAMPLE_BYTES // 20
+    have_partial = False
+    for start in range(0, len(pcm), chunk):
+        sample = converter.convert(pcm[start:start + chunk])
+        reading = detector.feed(sample, audioop.rms(sample, 2))
+        have_partial |= bool(reading.text)
+    final = detector.finish()
+    if not (final.signal and final.voice and final.recognized and have_partial and
+            parse(final.text) == ("open", "spotify")):
+        raise AssertionError(f"192 kHz: {final.status()} · {final.text!r}")
 
 
 def report(fixture_path, output_path):

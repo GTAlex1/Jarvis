@@ -79,7 +79,17 @@ class SpanishRecognizer:
     def feed(self, pcm):
         if not pcm or not self.recognizer.AcceptWaveform(pcm):
             return None
-        result = json.loads(self.recognizer.Result())
+        return self.transcript(self.recognizer.Result())
+
+    def partial(self):
+        return json.loads(self.recognizer.PartialResult()).get("partial", "").strip()
+
+    def finish(self):
+        return self.transcript(self.recognizer.FinalResult())
+
+    @staticmethod
+    def transcript(encoded):
+        result = json.loads(encoded)
         text = result.get("text", "").strip()
         if not text:
             return None
@@ -87,6 +97,63 @@ class SpanishRecognizer:
         confidence = sum(word["conf"] for word in words) / len(words) if words else 0.0
         return Transcript(text, confidence)
 
+
+
+@dataclass(frozen=True)
+class MicRecognition:
+    signal: bool = False
+    voice: bool = False
+    text: str = ""
+    recognized: bool = False
+
+    def status(self):
+        signal = "Señal recibida" if self.signal else "Sin señal"
+        voice = "Voz detectada" if self.voice else "Voz por detectar"
+        words = "Palabras reconocidas" if self.recognized else "Palabras por reconocer"
+        return f"{signal} · {voice} · {words}"
+
+
+class RecognitionProbe:
+    """Track level, speech activity and Spanish hypotheses independently."""
+    def __init__(self, recognizer):
+        from pocketsphinx import Vad
+
+        self.recognizer = recognizer
+        self.vad = Vad(2, RATE, 0.03)
+        self.buffer = bytearray()
+        self.speech_frames = 0
+        self.heard_voice = False
+        self.heard_signal = False
+        self.words = []
+        self.recognized = False
+
+    def feed(self, pcm, amplitude):
+        self.heard_signal |= amplitude >= 33  # roughly -60 dBFS
+        self.buffer.extend(pcm)
+        size = self.vad.frame_bytes
+        end = len(self.buffer) // size * size
+        for start in range(0, end, size):
+            if self.vad.is_speech(bytes(self.buffer[start:start + size])):
+                self.speech_frames += 1
+                self.heard_voice |= self.speech_frames >= 3
+            else:
+                self.speech_frames = 0
+        del self.buffer[:end]
+        self.add(self.recognizer.feed(pcm))
+        return self.snapshot(self.recognizer.partial())
+
+    def add(self, transcript):
+        if transcript:
+            self.words.append(transcript.text)
+            self.recognized |= transcript.understood
+
+    def snapshot(self, partial=""):
+        text = " ".join((*self.words, partial)).strip()
+        return MicRecognition(self.heard_signal, self.heard_voice, text[-240:], self.recognized)
+
+    def finish(self):
+        self.add(self.recognizer.finish())
+        return self.snapshot()
 
 def spanish_model():
     if not (MODEL_PATH / "am" / "final.mdl").is_file():

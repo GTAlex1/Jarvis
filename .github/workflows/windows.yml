@@ -9,6 +9,8 @@ on:
       - assets/**
       - tests/voice/**
       - docs/wiki/**
+      - AGENTS.md
+      - ROADMAP.md
   workflow_dispatch:
 permissions:
   contents: read
@@ -38,8 +40,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'No se encontró PortAudio.' }
           $options = @(
             '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS',
-            '--exclude-module', 'numpy', '--collect-binaries', 'vosk',
-            '--copy-metadata', 'pocketsphinx', '--copy-metadata', 'sounddevice',
+            '--collect-binaries', 'vosk',
+            '--copy-metadata', 'pocketsphinx', '--copy-metadata', 'sounddevice', '--copy-metadata', 'numpy',
             '--add-binary', "${portaudio}/libportaudio64bit.dll:_sounddevice_data/portaudio-binaries",
             '--add-binary', "${portaudio}/libportaudio64bit-asio.dll:_sounddevice_data/portaudio-binaries",
             '--add-data', "${acoustic}:pocketsphinx/model/en-us/en-us",
@@ -73,8 +75,17 @@ jobs:
           } finally {
             Get-Process JARVIS -ErrorAction SilentlyContinue | Stop-Process -Force
           }
-      - name: Prueba sustitución, reinicio y recuperación del ejecutable
-        run: python -m unittest -v test_update_windows
+      - name: Prueba sustitución, recuperación y actualización directa desde 0.4.1
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --depth=1 origin tag v0.4.1
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el código del actualizador anterior.' }
+          gh release download v0.4.1 --repo $env:GITHUB_REPOSITORY --pattern JARVIS.exe --dir legacy-probe
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el ejecutable anterior para la prueba.' }
+          $env:JARVIS_TEST_LEGACY_EXE = (Resolve-Path legacy-probe/JARVIS.exe).Path
+          python -m unittest -v test_update_windows
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows-x64

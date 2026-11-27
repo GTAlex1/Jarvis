@@ -18,9 +18,11 @@ El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja.
 
 ## Probar un micrófono
 
-Desde 0.6.1 puedes elegir **Predeterminado de Windows** para seguir la entrada de la configuración de sonido o elegir un dispositivo como **Realtek**. JARVIS negocia el formato y prueba rutas alternativas cuando falla la captura.
+En **Ajustes de voz** elige el micrófono y la **Interfaz de captura** por separado. Puedes usar **Automática**, **MME**, **DirectSound** o **WASAPI**. Con **Predeterminado de Windows** y MME o DirectSound se pueden usar los asignadores de Windows.
 
-En **Ajustes de voz**, pulsa **Probar micrófono** y habla durante cinco segundos. El medidor muestra la intensidad y el resultado indica la ruta, la frecuencia y si llegó señal. Puedes hacer la prueba con **Escucha permanente** desactivada. Si el medidor se queda a cero, consulta `%LOCALAPPDATA%\JARVIS\voz.log` para distinguir errores de captura y de reconocimiento.
+Pulsa **Probar micrófono** y di «abre Spotify». La prueba separa señal, voz y palabras y muestra la transcripción en directo. En modo automático repite la frase si cambia la ruta que muestra el medidor. Puedes hacer la prueba con **Escucha permanente** desactivada.
+
+Si necesitas distinguir problemas del controlador y del reconocimiento, abre `%LOCALAPPDATA%\JARVIS\voz.log`. Consulta las [pruebas físicas de la guía](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md#pruebas-con-tu-micrófono) y la [hoja de ruta](https://github.com/GTAlex1/Jarvis/blob/main/ROADMAP.md).
 
 ## Órdenes y atajos
 

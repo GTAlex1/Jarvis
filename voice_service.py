@@ -5,10 +5,11 @@ from threading import Event, Lock, Thread
 from time import monotonic
 
 from preferences import VoiceSettings
+from commands import parse
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices
 from voice_audio import installed_voices, speak
 from voice_diagnostics import LOG, configure as configure_log
-from voice_recognition import Conversation, SpanishRecognizer, WakeDetector, spanish_model
+from voice_recognition import Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, spanish_model
 
 STATE_LABELS = {
     "disabled": "Escucha permanente desactivada",
@@ -26,9 +27,14 @@ RETRY_SECONDS = 3
 MODEL_IDLE_SECONDS = 30
 PLAYBACK_GUARD_SECONDS = 0.45
 TEST_SECONDS = 5
+RECOGNITION_FAILURES = 2
 
 
 class RecognitionError(OSError):
+    pass
+
+
+class RecognitionRouteError(RecognitionError):
     pass
 
 
@@ -39,6 +45,8 @@ class VoiceService:
         self.on_catalog = on_catalog
         self.on_test = on_test
         self.meter = (0, "")
+        self.test_progress = None
+        self.preferred_routes = {}
         self.test_lock = Lock()
         self.test_request = None
         self.testing = False
@@ -71,9 +79,10 @@ class VoiceService:
         self.changed.set()
         self.start()
 
-    def test_microphone(self, selection):
+    def test_microphone(self, selection, interface=""):
         with self.test_lock:
-            self.test_request = selection
+            self.test_progress = None
+            self.test_request = (selection, interface)
             self.changed.set()
         self.start()
 
@@ -134,15 +143,15 @@ class VoiceService:
         while not self.stopped.is_set():
             with self.test_lock:
                 self.changed.clear()
-                selection, self.test_request = self.test_request, None
-                self.testing = selection is not None
+                request, self.test_request = self.test_request, None
+                self.testing = request is not None
             if self.stopped.is_set():
                 break
             settings, microphone = self.config
             self.list_options()
-            if selection is not None:
+            if request is not None:
                 try:
-                    self.run_test(selection, microphone)
+                    self.run_test(*request, microphone)
                 finally:
                     with self.test_lock:
                         self.testing = False
@@ -177,52 +186,99 @@ class VoiceService:
             detector = WakeDetector(settings.sensitivity)
         except ERRORS as error:
             raise RecognitionError(f"No se pudo iniciar la detección de «Jarvis»: {error}") from error
+        selection, interface = devices.migrate(settings.device, settings.interface)
+        preferred = self.preferred_routes.get(selection, "")
         rejected = set()
         while not self.changed.is_set():
             capture = None
             try:
-                with capture_input(devices, settings.device, self.changed, rejected) as capture:
+                with capture_input(devices, selection, self.changed, rejected, interface, preferred) as capture:
                     if capture is not None:
-                        self.listen(capture, detector, settings)
+                        automatic = not interface and len({r.api for r in capture.available_routes}) > 1
+                        self.listen(capture, detector, settings, automatic=automatic)
                     return
             except DefaultInputChanged:
+                self.preferred_routes.pop("", None)
                 raise
-            except CaptureError as error:
+            except (CaptureError, RecognitionRouteError) as error:
                 if capture is None:
                     raise
-                LOG.warning("captura interrumpida %s: %s", capture.label, error)
+                stage = "reconocimiento" if isinstance(error, RecognitionRouteError) else "captura"
+                LOG.warning("%s: probando otra ruta tras %s: %s", stage, capture.label, error)
                 rejected.add(capture.route.index)
+                if isinstance(error, RecognitionRouteError):
+                                        rejected.update(route.index for route in capture.available_routes if route.api == capture.route.api)
+                if preferred == capture.route.legacy_key:
+                    preferred = ""
+                    self.preferred_routes.pop(selection, None)
                 detector.reset()
             finally:
                 self.meter = (0, "")
 
-    def run_test(self, selection, microphone):
+    def preview(self, capture):
+        try:
+            probe = RecognitionProbe(self.recognize())
+            deadline = monotonic() + TEST_SECONDS
+            while not self.changed.is_set() and monotonic() < deadline:
+                pcm = capture.read()
+                self.meter = (capture.level, capture.label)
+                if pcm is not None:
+                    self.test_progress = probe.feed(pcm, capture.peak)
+            if not self.changed.is_set():
+                return probe.finish()
+        except CaptureError:
+            raise
+        except ERRORS as error:
+            raise RecognitionError(str(error)) from error
+        return None
+
+    def run_test(self, selection, interface, microphone):
         if not microphone:
             self.on_test("Activa «Micrófono» en la bandeja para probar la entrada.")
             return
+        best, label = None, ""
+        rejected = set()
         try:
             devices = input_devices(refresh=True)
-            with capture_input(devices, selection, self.changed) as capture:
-                if capture is None:
-                    return
-                deadline = monotonic() + TEST_SECONDS
-                while not self.changed.is_set() and monotonic() < deadline:
-                    capture.read()
-                    self.meter = (capture.level, capture.label)
-                if not self.changed.is_set():
-                    if capture.peak >= 33:  # about -60 dBFS
-                        message = f"Señal recibida · {capture.label}"
-                        LOG.info("captura prueba con señal %s, pico RMS %s", capture.label, capture.peak)
-                    else:
-                        message = f"Señal ausente o muy baja · {capture.label}"
-                        LOG.warning("captura prueba sin señal útil %s, pico RMS %s", capture.label, capture.peak)
-                    self.on_test(message)
+            selection, interface = devices.migrate(selection, interface)
+            while not self.changed.is_set():
+                capture = None
+                try:
+                    with capture_input(devices, selection, self.changed, rejected, interface) as capture:
+                        if capture is None:
+                            return
+                        self.test_progress = None
+                        reading = self.preview(capture)
+                        if reading is None:
+                            return
+                        LOG.info("prueba de voz %s: %s", capture.label, reading.status())
+                        score = (reading.recognized, reading.voice, reading.signal)
+                        if best is None or score > (best.recognized, best.voice, best.signal):
+                            best, label = reading, capture.label
+                        if reading.recognized and reading.voice:
+                            if not interface:
+                                self.preferred_routes[selection] = capture.route.legacy_key
+                            break
+                        rejected.add(capture.route.index)
+                except CaptureError as error:
+                    LOG.warning("captura prueba: %s", error)
+                    if capture is not None:
+                        rejected.add(capture.route.index)
+                        continue
+                    if best is None:
+                        raise
+                    break
+            if best is not None and not self.changed.is_set():
+                self.test_progress = best
+                self.on_test(f"{best.status()} · {label}")
         except ERRORS as error:
-            LOG.error("captura prueba: %s", error)
+            stage = "reconocimiento" if isinstance(error, RecognitionError) else "captura"
+            LOG.error("%s prueba: %s", stage, error)
             if not self.changed.is_set():
-                self.on_test(f"Falló la prueba del micrófono: {error}")
+                self.on_test(f"Falló la prueba de {stage}: {error}")
 
-    def listen(self, capture, detector, settings):
+    def listen(self, capture, detector, settings, automatic=False):
+        failures = 0
         exchange = Conversation(detector, self.recognize, self.notify)
         self.notify("waiting")
         while not self.changed.is_set():
@@ -240,8 +296,15 @@ class VoiceService:
                 raise RecognitionError(f"Falló el reconocimiento de voz: {error}") from error
             if was_listening and exchange.active is None and transcript is None:
                 LOG.info("reconocimiento: activación sin orden antes del tiempo de espera")
+                failures += 1
+                if automatic and failures >= RECOGNITION_FAILURES:
+                    raise RecognitionRouteError("Dos activaciones consecutivas sin una orden reconocida.")
             if transcript is None or self.changed.is_set():
                 continue
+            if transcript.understood and parse(transcript.text):
+                failures = 0
+            else:
+                failures += 1
             self.notify("processing")
             capture.pause()
             self.meter = (0, capture.label)
@@ -250,6 +313,8 @@ class VoiceService:
                 return
             capture.resume()
             exchange.reset()
+            if automatic and failures >= RECOGNITION_FAILURES:
+                raise RecognitionRouteError("Dos activaciones consecutivas sin una orden reconocida.")
             if warning:
                 self.notify("waiting", warning)
 

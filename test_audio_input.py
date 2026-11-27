@@ -62,8 +62,13 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(len(inputs.devices), 1)
         self.assertEqual(inputs.key_for("mme"), "endpoint-realtek")
         self.assertEqual(inputs.key_for("mapper"), "")
-        self.assertEqual([r.index for r in inputs.routes_for("")], [4, 8, 7, 12])
-        self.assertEqual([r.index for r in inputs.routes_for("mapper")], [8, 4, 7, 12])
+        self.assertEqual([r.index for r in inputs.routes_for("")], [8, 7, 12, 4])
+        self.assertEqual([r.index for r in inputs.routes_for("mapper")], [8, 7])
+        self.assertEqual(inputs.migrate("mapper", ""), ("", "MME"))
+        self.assertEqual(inputs.migrate("mme", ""), ("endpoint-realtek", "MME"))
+        self.assertEqual(inputs.migrate("endpoint-realtek", ""), ("endpoint-realtek", ""))
+        self.assertEqual([r.index for r in inputs.routes_for("endpoint-realtek", interface=BACKENDS[2])], [12])
+        self.assertEqual([r.index for r in inputs.routes_for("", preferred=BACKENDS[2])], [12, 8, 7, 4])
 
     def test_ambiguous_names_are_retained_as_separate_devices(self):
         second = replace(WASAPI, index=6, endpoint="other", legacy_key="other")
@@ -75,7 +80,7 @@ class RouteTests(unittest.TestCase):
     def test_default_endpoint_override_and_explicit_device_are_distinct(self):
         usb = replace(WASAPI, index=5, name="USB", endpoint="usb", default=False)
         inputs = group_routes([WASAPI, usb, MAPPER])
-        self.assertEqual([r.index for r in inputs.routes_for("", "usb")], [5, 8])
+        self.assertEqual([r.index for r in inputs.routes_for("", "usb")], [8, 5])
         self.assertEqual([r.index for r in inputs.routes_for("endpoint-realtek", "usb")], [4])
         with self.assertRaisesRegex(CaptureError, "desconectado"):
             inputs.routes_for("missing")
@@ -93,14 +98,15 @@ class CaptureTests(unittest.TestCase):
         driver = FakeSoundDevice([(4, 48000, 2)], {4: 500})
         capture = self.input(driver, "wasapi")
         pcm = capture.read()
-        self.assertEqual(driver.tried, [(4, 48000, 1), (4, 48000, 2)])
+        self.assertEqual(driver.tried, [(4, 16000, 1), (4, 16000, 2), (4, 48000, 1), (4, 48000, 2)])
         self.assertEqual(len(pcm), 1600)
         self.assertGreater(capture.level, 0)
 
     def test_silent_wasapi_switches_to_mme_mapper(self):
         self.enterContext(patch("audio_input.DIGITAL_SILENCE", 0.05))
         driver = FakeSoundDevice([(4, 48000, 1), (8, 44100, 1)], {4: 0, 8: 500})
-        capture = self.input(driver, "wasapi")
+        self.enterContext(patch("audio_input.AUTO_ORDER", BACKENDS))
+        capture = self.input(driver, "endpoint-realtek")
         self.assertEqual(capture.route.index, 8)
         driver.opened[0][3].close.assert_called_once()
 
@@ -134,6 +140,34 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(converter.convert(raw), array("h", [900, 900]).tobytes())
 
 
+    def test_192khz_format_comes_after_voice_rates_and_filters_aliases(self):
+        import audioop
+        from math import pi, sin
+
+        from audio_input import input_formats
+
+        route = replace(WASAPI, rate=192000)
+        formats = list(input_formats(route))
+        self.assertEqual(formats[0].rate, 16000)
+        self.assertGreater(next(i for i, fmt in enumerate(formats) if fmt.rate == 192000), 3)
+        signal = array("h", (round(15000 * sin(2 * pi * 31000 * i / 192000))
+                             for i in range(19200))).tobytes()
+        converter = PcmConverter(AudioFormat(192000, 1))
+        restored = b"".join(converter.convert(signal[i:i + 3900]) for i in range(0, len(signal), 3900))
+        old, _ = audioop.ratecv(signal, 2, 1, 192000, 16000, None)
+        self.assertEqual(len(restored), len(old))
+        self.assertGreater(audioop.rms(old, 2), 10000)
+        self.assertLess(audioop.rms(restored[160:], 2), 30)
+
+    def test_44100_conversion_preserves_state_across_uneven_blocks(self):
+        raw = array("h", ((i % 137) * 100 - 6500 for i in range(4410))).tobytes()
+        fmt = AudioFormat(44100, 1)
+        single = PcmConverter(fmt).convert(raw)
+        split = PcmConverter(fmt)
+        self.assertEqual(single, b"".join(split.convert(raw[i:i + 466]) for i in range(0, len(raw), 466)))
+        self.assertEqual(len(single), 3200)
+
+
 @unittest.skipUnless(sys.platform == "win32", "Necesita Windows")
 class NativeAudioTests(unittest.TestCase):
     def test_queries_live_default_and_mappers_even_without_hardware(self):
@@ -149,11 +183,13 @@ class NativeAudioTests(unittest.TestCase):
 
         from jarvis_gui import VoiceDialog
         from preferences import VoiceSettings
+        from voice_recognition import MicRecognition
 
         root = tk.Tk()
         test, cancel = Mock(), Mock()
         dialog = VoiceDialog(root, VoiceSettings(), Mock(), Mock(), test, cancel,
-                             lambda: (65, "Realtek · WASAPI · 48000 Hz"))
+                             lambda: (65, "Realtek · WASAPI · 48000 Hz"),
+                             lambda: MicRecognition(True, True, "abre Spotify", True))
         try:
             root.update()
             self.assertEqual(float(dialog.level["value"]), 65)
@@ -161,8 +197,11 @@ class NativeAudioTests(unittest.TestCase):
             inputs = group_routes([WASAPI, MME])
             dialog.show_catalog(inputs, [], "")
             dialog.microphone.set(inputs.devices[0].label)
+            dialog.interface.set("DirectSound")
             dialog.test_button.invoke()
-            test.assert_called_once_with(WASAPI.endpoint)
+            test.assert_called_once_with(WASAPI.endpoint, BACKENDS[2])
+            self.assertIn("Palabras reconocidas", dialog.test_status["text"])
+            self.assertEqual(dialog.transcription["text"], "abre Spotify")
             self.assertIn("disabled", str(dialog.test_button["state"]))
             dialog.test_result("Señal recibida")
             self.assertEqual(str(dialog.test_button["state"]), "normal")

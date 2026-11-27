@@ -1,5 +1,5 @@
 """Current-user settings for the Windows desktop and console entry points."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields, replace
 import json
 import sys
 from pathlib import Path
@@ -70,6 +70,12 @@ def set_microphone(enabled):
 
 
 
+CAPTURE_INTERFACES = {
+    "Automática": "", "MME": "MME", "DirectSound": "Windows DirectSound",
+    "WASAPI": "Windows WASAPI", "ASIO": "ASIO",
+}
+
+
 @dataclass(frozen=True)
 class VoiceSettings:
     enabled: bool = False
@@ -77,10 +83,13 @@ class VoiceSettings:
     voice: str = ""
     volume: int = 75
     sensitivity: int = 3
+    interface: str = ''
 
     def __post_init__(self):
         if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):
             raise ValueError("Configuración de voz no válida.")
+        if self.interface not in CAPTURE_INTERFACES.values():
+            raise ValueError("Interfaz de captura no válida.")
         if type(self.volume) is not int or not 0 <= self.volume <= 100:
             raise ValueError("El volumen debe estar entre 0 y 100.")
         if type(self.sensitivity) is not int or not 1 <= self.sensitivity <= 5:
@@ -88,11 +97,19 @@ class VoiceSettings:
 
 
 def voice_settings():
+    options = VoiceSettings()
     try:
-        settings = json.loads(read_value(SETTINGS_KEY, "VoiceSettings", "{}"))
-        return VoiceSettings(**settings)
+        saved = json.loads(read_value(SETTINGS_KEY, "VoiceSettings", "{}"))
     except (TypeError, ValueError):
-        return VoiceSettings()
+        return options
+    if isinstance(saved, dict):
+        for field in fields(options):
+            if field.name in saved:
+                try:
+                    options = replace(options, **{field.name: saved[field.name]})
+                except ValueError:
+                    continue
+    return options
 
 
 def save_voice_settings(settings):
