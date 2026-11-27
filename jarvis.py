@@ -173,6 +173,22 @@ HELP = """Escribe una orden o pulsa Intro para usar el micrófono.
   pantallas | ventanas | ayuda | salir"""
 
 
+def execute(desktop, command):
+    key = normalize(command)
+    if key == "ayuda":
+        return HELP
+    if key == "pantallas":
+        return "\n".join(
+            f"{number}: {bounds}" + (" (principal)" if primary else "")
+            for number, (bounds, primary) in sorted(desktop.screens().items())
+        ) or "No encontré pantallas."
+    if key == "ventanas":
+        return "\n".join(title for _, title in desktop.windows()) or "No encontré ventanas."
+    if move := parse_move(command):
+        return desktop.move(*move)
+    return "Todavía no sé hacer eso. Escribe «ayuda» para ver las órdenes disponibles."
+
+
 def main():
     if sys.platform != "win32":
         print("JARVIS necesita Windows 10 o 11 para controlar el escritorio.")
@@ -194,18 +210,7 @@ def main():
             key = normalize(command)
             if key == "salir":
                 return 0
-            if key == "ayuda":
-                print(HELP)
-            elif key == "pantallas":
-                for number, (bounds, primary) in sorted(desktop.screens().items()):
-                    print(f"{number}: {bounds}" + (" (principal)" if primary else ""))
-            elif key == "ventanas":
-                for _, title in desktop.windows():
-                    print(title)
-            elif move := parse_move(command):
-                print(desktop.move(*move))
-            else:
-                print("Todavía no sé hacer eso. Escribe «ayuda» para ver las órdenes disponibles.")
+            print(execute(desktop, command))
         except (EOFError, KeyboardInterrupt):
             return 0
         except (OSError, subprocess.TimeoutExpired) as error:

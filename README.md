@@ -4,11 +4,16 @@ Asistente de escritorio que mueve ventanas entre monitores con órdenes en espa�
 
 ## Primer uso
 
-1. Descarga o clona este repositorio.
-2. Abre una terminal en la carpeta y ejecuta `py jarvis.py` en Windows 10 u 11 con Python 3.10 o posterior.
-3. Abre VS Code y prueba esta orden:
+1. Descarga o clona el repositorio en Windows 10 u 11.
+2. Si necesitas Python, instala Python 3.10 o posterior desde [python.org](https://www.python.org/downloads/windows/), con Tcl/Tk y Python disponible en PATH.
+3. Haz doble clic en `Abrir-Jarvis.cmd` o ejecuta `python jarvis_gui.py` desde PowerShell.
+4. Con VS Code abierto, escribe esta orden en la ventana y pulsa Intro:
 
    > Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
+
+Si PowerShell indica que `py` no existe, prueba `python --version`. Si muestra una versión compatible, puedes usar `python` directamente. Si tampoco está disponible, instala Python y vuelve a abrir PowerShell.
+
+La consola sigue disponible con `python jarvis.py`.
 
 ## Comandos
 
@@ -25,10 +30,10 @@ Si omites el número de pantalla, JARVIS usa la principal. El cálculo respeta e
 
 ## Dictado
 
-Pulsa Intro con la línea vacía, di la orden y confirma la transcripción con `s`. Para dictar necesitas un micrófono y un motor de reconocimiento en español compatible con System.Speech en Windows PowerShell. Puedes escribir órdenes sin configurar el micrófono. El proyecto usa la biblioteca estándar de Python.
+En la versión de consola, pulsa Intro con la línea vacía, di la orden y confirma la transcripción con `s`. Para dictar necesitas un micrófono y un motor de reconocimiento en español compatible con System.Speech en Windows PowerShell. Puedes escribir órdenes sin configurar el micrófono. El proyecto usa la biblioteca estándar de Python.
 
 ## Estado del proyecto
 
-El prototipo mueve ventanas y muestra respuestas en la terminal. Las peticiones libres y las acciones encadenadas quedan para futuras versiones. Se verificó el análisis de órdenes y el cálculo geométrico en Linux. Queda pendiente validar el movimiento y el dictado en un equipo Windows.
+El prototipo mueve ventanas y muestra respuestas en su ventana o en la terminal. Las peticiones libres y las acciones encadenadas quedan para futuras versiones. Se verificó el análisis de órdenes y el cálculo geométrico en Linux. Queda pendiente validar el movimiento y el dictado en un equipo Windows.
 
 Consulta la [guía de desarrollo](Guia.md) para resolver problemas o añadir comandos.
