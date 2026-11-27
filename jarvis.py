@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import unicodedata
+from commands import HELP, clean, parse, rectangle
 
 
 def normalize(value):
@@ -16,15 +17,6 @@ def normalize(value):
     ).strip().rstrip(".!?")
 
 
-POSITION = r"izquierda|izquieda|derecha|pantalla completa|maximiza(?:do|da)?"
-SCREEN = r"(?: (?:(?:de|en) (?:la |el )?|del )?(?:pantalla|monitor) (\d+))?"
-MOVE = re.compile(
-    r"(?:oye jarvis[, ]+)?(?:mueve|pon|coloca) "
-    r"(?:(?:la )?(?:ventana|pestana)(?: de)? )?"
-    rf"(?:(?:el|la) )?(.+?) (?:a|en) (?:la )?(?:mitad )?({POSITION}){SCREEN}"
-)
-SHORT_MOVE = re.compile(rf"(?:el |la )?(.+?) ({POSITION}){SCREEN}")
-MAXIMIZE = re.compile(rf"maximiza (?:el |la )?(.+?){SCREEN}")
 APP_NAMES = {
     "code": ("Visual Studio Code", "VSCode", "VS Code"),
     "chrome": ("Google Chrome", "Chrome"),
@@ -41,17 +33,11 @@ APP_NAMES = {
 
 
 def parse_move(command):
-    command = " ".join(normalize(command).split())
-    if match := MAXIMIZE.fullmatch(command):
-        title, screen = match.groups()
-        return title, "completa", int(screen) if screen else None
-    if match := MOVE.fullmatch(command) or SHORT_MOVE.fullmatch(command):
-        title, position, screen = match.groups()
-        if position == "izquieda":
-            position = "izquierda"
-        elif position.startswith(("pantalla", "maximiza")):
-            position = "completa"
-        return title, position, int(screen) if screen else None
+    parsed = parse(command)
+    if parsed and parsed[0] == "place":
+        _, title, position, screen = parsed
+        legacy = {"left": "izquierda", "right": "derecha", "full": "completa"}
+        return title, legacy.get(position, position), screen
 
 
 def app_label(executable):
@@ -122,6 +108,12 @@ class Desktop:
             "EnumDisplayMonitors": ([w.HDC, c.POINTER(w.RECT), self.monitor_callback, w.LPARAM], w.BOOL),
             "GetMonitorInfoW": ([w.HMONITOR, c.POINTER(MonitorInfo)], w.BOOL),
             "EnumWindows": ([self.window_callback, w.LPARAM], w.BOOL),
+            "PostMessageW": ([w.HWND, w.UINT, w.WPARAM, w.LPARAM], w.BOOL),
+            "SetForegroundWindow": ([w.HWND], w.BOOL),
+            "GetForegroundWindow": ([], w.HWND),
+            "IsWindow": ([w.HWND], w.BOOL),
+            "LockWorkStation": ([], w.BOOL),
+            "keybd_event": ([w.BYTE, w.BYTE, w.DWORD, c.c_size_t], None),
             "GetShellWindow": ([], w.HWND),
             "GetWindowThreadProcessId": ([w.HWND, c.POINTER(w.DWORD)], w.DWORD),
             "IsWindowVisible": ([w.HWND], w.BOOL),
@@ -214,6 +206,27 @@ class Desktop:
             raise OSError("Windows no pudo consultar las aplicaciones del menú Inicio.") from error
 
     def open_app(self, title):
+        builtins = {
+            "configuracion": "ms-settings:", "ajustes": "ms-settings:",
+            "configuracion de pantalla": "ms-settings:display",
+            "configuracion de sonido": "ms-settings:sound",
+            "wifi": "ms-settings:network-wifi", "bluetooth": "ms-settings:bluetooth",
+            "windows update": "ms-settings:windowsupdate",
+            "descargas": "shell:Downloads", "documentos": "shell:Personal",
+            "imagenes": "shell:My Pictures", "papelera": "shell:RecycleBinFolder",
+        }
+        executables = {
+            "explorador": "explorer.exe", "explorador de archivos": "explorer.exe",
+            "administrador de tareas": "System32/Taskmgr.exe",
+            "bloc de notas": "System32/notepad.exe",
+            "calculadora": "System32/calc.exe",
+        }
+        if title in builtins:
+            os.startfile(builtins[title])
+            return f"Solicité abrir «{title}»."
+        if title in executables:
+            os.startfile(os.path.join(os.environ["SystemRoot"], executables[title]))
+            return f"Solicité abrir «{title}»."
         matches = launch_matches(self.applications(), title)
         if not matches:
             return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
@@ -241,52 +254,93 @@ class Desktop:
         lines.extend(f"No pude minimizar «{name}»." for name in failed)
         return "\n".join(lines)
 
+    def select_window(self, title):
+        matches = matching_windows(self.windows(), title)
+        if not matches:
+            raise ValueError(f"No encontré una ventana de «{title}». Puedes usar «abre {title}».")
+        if len(matches) > 1:
+            names = "\n".join(f"  {name}" for _, name, _ in matches)
+            raise ValueError(f"Hay varias ventanas. Usa un título más específico:\n{names}")
+        return matches[0]
+
+    def window_action(self, action, title):
+        handle, name, _ = self.select_window(title)
+        if action == "close":
+            if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
+                raise c.WinError(c.get_last_error())
+            return f"Solicité cerrar «{name}». Revisa si la aplicación pide guardar cambios."
+        if action == "restore":
+            self.api.ShowWindow(handle, 9)
+            if self.api.IsIconic(handle) or self.api.IsZoomed(handle):
+                return f"«{name}» no pudo restaurarse."
+            return f"Restauré «{name}»."
+        if action == "focus":
+            if self.api.IsIconic(handle):
+                self.api.ShowWindow(handle, 9)
+            self.api.SetForegroundWindow(handle)
+            if self.api.GetForegroundWindow() == handle:
+                return f"«{name}» está en primer plano."
+            return f"Windows impidió poner «{name}» en primer plano. Selecciónala desde la barra de tareas."
+        raise ValueError("Acción de ventana desconocida.")
+
     def move(self, title, side, screen):
+        position = {"izquierda": "left", "derecha": "right", "completa": "full"}.get(side, side)
         screens = self.screens()
-        if screen is None:
+        if screen in (None, 0):
             screen = next((number for number, (_, primary) in screens.items() if primary), None)
         if screen not in screens:
             return "No encontré esa pantalla. Escribe «pantallas» para ver las disponibles."
-
-        matches = matching_windows(self.windows(), title)
-        if not matches:
-            return f"No encontré una ventana que coincida con «{title}»."
-        if len(matches) > 1:
-            names = "\n".join(f"  {name}" for _, name, _ in matches)
-            return f"Encontré varias ventanas. Repite la orden con un título más específico:\n{names}"
-
-        handle, name, _ = matches[0]
-        if self.api.IsZoomed(handle) or self.api.IsIconic(handle):
-            self.api.ShowWindow(handle, 9)  # SW_RESTORE
-        bounds = screens[screen][0]
-        if side == "completa":
-            left, top, right, bottom = bounds
-            restored = w.RECT()
-            if not self.api.GetWindowRect(handle, c.byref(restored)):
-                raise c.WinError(c.get_last_error())
-            target = (
-                left, top, min(right - left, restored.right - restored.left),
-                min(bottom - top, restored.bottom - restored.top),
-            )
-        else:
-            target = half(bounds, side)
-        flags = 0x0014  # SWP_NOZORDER | SWP_NOACTIVATE
-        if not self.api.SetWindowPos(handle, None, *target, flags):
+        handle, name, _ = self.select_window(title)
+        was_maximized = self.api.IsZoomed(handle)
+        if was_maximized or self.api.IsIconic(handle):
+            self.api.ShowWindow(handle, 9)
+        old = w.RECT()
+        if not self.api.GetWindowRect(handle, c.byref(old)):
             raise c.WinError(c.get_last_error())
-
-        if side == "completa":
-            self.api.ShowWindow(handle, 3)  # SW_MAXIMIZE
+        target = rectangle(screens[screen][0], position, (old.right-old.left, old.bottom-old.top))
+        if not self.api.SetWindowPos(handle, None, *target, 0x0014):
+            raise c.WinError(c.get_last_error())
+        if position == "full" or (position == "monitor" and was_maximized):
+            self.api.ShowWindow(handle, 3)
             if self.api.IsZoomed(handle):
                 return f"Maximicé «{name}» en la pantalla {screen}."
             return f"«{name}» no admitió maximizarse en la pantalla {screen}."
-
         actual = w.RECT()
         if not self.api.GetWindowRect(handle, c.byref(actual)):
             raise c.WinError(c.get_last_error())
-        measured = (actual.left, actual.top, actual.right - actual.left, actual.bottom - actual.top)
+        measured = (actual.left, actual.top, actual.right-actual.left, actual.bottom-actual.top)
         if measured != target:
-            return f"Moví «{name}», pero la ventana quedó en {measured} y el área solicitada era {target}."
-        return f"Moví «{name}» a la mitad {side} de la pantalla {screen}."
+            return f"Moví «{name}», pero su tamaño o posición quedó en {measured} frente al área solicitada {target}."
+        return f"Coloqué «{name}» en la pantalla {screen}."
+
+    def system_action(self, action):
+        if action == "lock":
+            if not self.api.LockWorkStation():
+                raise c.WinError(c.get_last_error())
+            return "Solicité bloquear la sesión de Windows."
+        shortcuts = {
+            "desktop": (0x5B, 0x44), "task_view": (0x5B, 0x09),
+            "minimize_all": (0x5B, 0x4D), "restore_all": (0x5B, 0x10, 0x4D),
+            "screenshot": (0x5B, 0x10, 0x53),
+            "volume_up": (0xAF,), "volume_down": (0xAE,), "mute": (0xAD,),
+            "play_pause": (0xB3,), "next_track": (0xB0,), "previous_track": (0xB1,),
+        }
+        keys = shortcuts[action]
+        try:
+            for key in keys:
+                self.api.keybd_event(key, 0, 0, 0)
+        finally:
+            for key in reversed(keys):
+                self.api.keybd_event(key, 0, 0x0002, 0)
+        labels = {
+            "desktop": "alternar el escritorio", "task_view": "abrir la vista de tareas",
+            "minimize_all": "minimizar todas las ventanas", "restore_all": "restaurar las ventanas minimizadas en conjunto",
+            "screenshot": "seleccionar un recorte de pantalla", "volume_up": "subir un paso el volumen",
+            "volume_down": "bajar un paso el volumen", "mute": "alternar el silencio",
+            "play_pause": "alternar reproducción y pausa", "next_track": "pasar a la siguiente pista",
+            "previous_track": "volver a la pista anterior",
+        }
+        return f"Envié a Windows la orden de {labels[action]}."
 
 
 def listen():
@@ -319,35 +373,39 @@ def listen():
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-HELP = """Órdenes de escritorio
-  Abre VSCode | Minimiza Chrome | Aplicaciones
-  Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
-  VSCode izquierda | Chrome derecha monitor 2 | Visual Studio Code pantalla completa
-  pantallas | ventanas | ayuda | salir"""
-
-
 def execute(desktop, command):
-    key = normalize(command)
-    if key == "ayuda":
-        return HELP
-    if key == "pantallas":
-        return "\n".join(
-            f"{number}: {bounds}" + (" (principal)" if primary else "")
-            for number, (bounds, primary) in sorted(desktop.screens().items())
-        ) or "No encontré pantallas."
-    if key == "ventanas":
-        return "\n".join(
-            f"{app_label(executable)} · {title}" if executable else title
-            for _, title, executable in desktop.windows()
-        ) or "No encontré ventanas."
-    if key == "aplicaciones":
-        return "\n".join(name for name, _ in desktop.applications()) or "No encontré aplicaciones en el menú Inicio."
-    if action := re.fullmatch(r"(abre|abrir|minimiza|minimizar) (?:(?:el|la) )?(.+)", " ".join(key.split())):
-        verb, title = action.groups()
-        return desktop.open_app(title) if verb.startswith("abr") else desktop.minimize(title)
-    if move := parse_move(command):
-        return desktop.move(*move)
-    return "Todavía no sé hacer eso. Escribe «ayuda» para ver las órdenes disponibles."
+    parsed = parse(command)
+    if not parsed:
+        return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
+    action, *args = parsed
+    try:
+        if action == "help":
+            return HELP
+        if action == "screens":
+            return "\n".join(
+                f"{number}: {bounds}" + (" (principal)" if primary else "")
+                for number, (bounds, primary) in sorted(desktop.screens().items())
+            ) or "No encontré pantallas."
+        if action == "windows":
+            return "\n".join(
+                f"{app_label(executable)} · {title}" if executable else title
+                for _, title, executable in desktop.windows()
+            ) or "No encontré ventanas."
+        if action == "apps":
+            return "\n".join(name for name, _ in desktop.applications()) or "No encontré aplicaciones en el menú Inicio."
+        if action == "open":
+            return desktop.open_app(*args)
+        if action == "minimize":
+            return desktop.minimize(*args)
+        if action == "place":
+            return desktop.move(*args)
+        if action == "system":
+            return desktop.system_action(*args)
+        if action == "exit":
+            return "Cierra JARVIS desde su ventana o escribe «salir» en la consola."
+        return desktop.window_action(action, *args)
+    except ValueError as error:
+        return str(error)
 
 
 def main():

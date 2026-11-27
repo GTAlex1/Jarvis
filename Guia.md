@@ -31,3 +31,13 @@ Si el listado carece de un motor en español o el dispositivo de entrada falla, 
 4. Comprueba la frase válida, una variante y una entrada inválida. Para cambios en las ventanas, comprueba también una ventana maximizada y un monitor secundario.
 
 Puedes comprobar que el código compila con `python -m py_compile jarvis.py jarvis_gui.py`.
+
+## Comandos desde la versión 0.4.0
+
+La tabla completa de acciones está en [README.md](README.md#órdenes-de-windows). El analizador está en `commands.py`. Devuelve una acción y sus argumentos, que `execute()` aplica mediante `Desktop`.
+
+`rectangle()` calcula las mitades, esquinas y posiciones usando coordenadas de Windows. Se prueban monitores con coordenadas negativas y dimensiones impares.
+
+Ejecuta `python -m unittest -v test_commands` para comprobar las frases de ejemplo, la selección de ventanas y la geometría. En Windows, también se crea una ventana de prueba para comprobar posiciones, minimizar, maximizar, restaurar y recibir una solicitud de cierre que la ventana puede rechazar. Las pruebas no bloquean la sesión ni cambian el volumen.
+
+El flujo de publicación ejecuta esas pruebas antes de generar el ejecutable y publicar la versión.

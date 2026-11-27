@@ -118,7 +118,7 @@ def main():
             desktop_command = pending.get()
             try:
                 response = execute(desktop, desktop_command)
-            except OSError as error:
+            except (OSError, ValueError) as error:
                 response = f"No se pudo completar la orden: {error}"
             responses.put(response)
 
@@ -223,7 +223,7 @@ def main():
 
     button(form, "Enviar  ↵", submit, primary=True).grid(row=1, column=1, padx=(10, 0), sticky="ns")
     entry.bind("<Return>", submit)
-    append("Prueba «abre VSCode» o «minimiza Chrome».", "hint")
+    append("Prueba «Chrome esquina superior derecha» o «cierra el Bloc de notas».", "hint")
     Thread(target=work, daemon=True).start()
     poll_responses()
     entry.focus_set()
