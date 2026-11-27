@@ -1,41 +1,35 @@
 # JARVIS para Windows
 
-Asistente de escritorio que mueve ventanas entre monitores con órdenes en español. Puedes escribir las órdenes o dictarlas desde la terminal.
+Asistente gráfico que organiza ventanas entre monitores con órdenes en español. La interfaz tiene un núcleo animado, un historial de respuestas y accesos a **Pantallas**, **Ventanas** y **Ayuda**.
 
-## Primer uso
+## Descargar y abrir
 
-1. Descarga o clona el repositorio en Windows 10 u 11.
-2. Si necesitas Python, instala Python 3.10 o posterior desde [python.org](https://www.python.org/downloads/windows/), con Tcl/Tk y Python disponible en PATH.
-3. Haz doble clic en `Abrir-Jarvis.cmd` o ejecuta `python jarvis_gui.py` desde PowerShell.
-4. Con VS Code abierto, escribe esta orden en la ventana y pulsa Intro:
+1. Descarga [JARVIS para Windows de 64 bits](https://github.com/GTAlex1/Jarvis/actions/runs/45999092276/artifacts/15197661172) con tu sesión de GitHub iniciada.
+2. Extrae el ZIP y abre `JARVIS.exe`. El ejecutable incluye Python.
+3. Con VS Code abierto, escribe `VSCode izquierda` y pulsa **Intro**.
 
-   > Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
+Si el ZIP de esa compilación ha caducado, abre [Aplicación de Windows](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml), elige la última ejecución correcta y busca **JARVIS-Windows-x64** en **Artifacts**.
 
-Si PowerShell indica que `py` no existe, prueba `python --version`. Si muestra una versión compatible, puedes usar `python` directamente. Si tampoco está disponible, instala Python y vuelve a abrir PowerShell.
-
-La consola sigue disponible con `python jarvis.py`.
-
-## Comandos
+## Órdenes
 
 | Orden | Resultado |
 | --- | --- |
-| `mueve la pestaña VSCode a la mitad izquierda de la pantalla 1` | Coloca la ventana completa de VS Code en la mitad izquierda. |
-| `pon la ventana de Firefox a la mitad derecha del monitor 2` | Coloca Firefox en la mitad derecha del monitor 2. |
-| `pantallas` | Muestra los identificadores de monitores detectados. |
-| `ventanas` | Muestra los programas abiertos y los títulos de sus ventanas. |
-| `ayuda` | Muestra los ejemplos disponibles. |
-| `salir` | Cierra el asistente. |
+| `VSCode izquierda` | Coloca VS Code en la mitad izquierda. |
+| `vscode izquieda` | Interpreta la errata «izquieda» como «izquierda». |
+| `Visual Studio Code pantalla completa` | Maximiza VS Code. |
+| `Chrome derecha monitor 2` | Coloca Chrome en la mitad derecha del monitor 2. |
+| `maximiza el Explorador en la pantalla 2` | Maximiza el Explorador en el monitor 2. |
+| `pantallas` | Lista los identificadores de monitores. |
+| `ventanas` | Lista los programas y los títulos de sus ventanas visibles. |
+| `ayuda` | Muestra ejemplos. |
+| `salir` | Cierra JARVIS. |
 
-También puedes escribir «VSCode izquierda», «Visual Studio Code pantalla completa» o «Chrome derecha monitor 2». Pantalla completa maximiza la ventana en el escritorio de Windows. Puedes decir «mueve Chrome a la izquierda» o «pon el Explorador a la derecha». JARVIS busca el nombre del programa, su ejecutable o el título de la ventana. Si hay varias coincidencias, usa un título más concreto de la lista de **Ventanas**.
+También puedes escribir frases completas como «mueve la pestaña VSCode a la mitad izquierda de la pantalla 1». JARVIS busca por nombre del programa, ejecutable o título. Si hay varias coincidencias, escribe una parte más específica del título. Si omites el monitor, se usa el principal. «Pantalla completa» maximiza la ventana dentro del escritorio de Windows.
 
-Si omites el número de pantalla, JARVIS usa la principal. El cálculo respeta el área de trabajo para dejar sitio a la barra de tareas.
+## Ejecutar desde el código fuente
 
-## Dictado
+En Windows 10 u 11, instala [Python 3.10 o posterior](https://www.python.org/downloads/windows/) con Tcl/Tk. Ejecuta `python jarvis_gui.py` o haz doble clic en `Abrir-Jarvis.cmd`. Si alguno de los comandos `py` o `python` falta, el lanzador prueba el otro.
 
-En la versión de consola, pulsa Intro con la línea vacía, di la orden y confirma la transcripción con `s`. Para dictar necesitas un micrófono y un motor de reconocimiento en español compatible con System.Speech en Windows PowerShell. Puedes escribir órdenes sin configurar el micrófono. El proyecto usa la biblioteca estándar de Python.
+Para dictar, abre la consola con `python jarvis.py`, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
 
-## Estado del proyecto
-
-El prototipo mueve ventanas y muestra respuestas en su ventana o en la terminal. Las peticiones libres y las acciones encadenadas quedan para futuras versiones. Se verificó el análisis de órdenes y el cálculo geométrico en Linux. Queda pendiente validar el movimiento y el dictado en un equipo Windows.
-
-Consulta la [guía de desarrollo](Guia.md) para resolver problemas o añadir comandos.
+Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).
