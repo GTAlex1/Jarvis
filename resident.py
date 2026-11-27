@@ -1,5 +1,5 @@
 """Own the desktop session, tray and updater independently of the command panel."""
-from queue import Empty, Queue
+from queue import Empty, SimpleQueue
 import sys
 from threading import Thread
 import tkinter as tk
@@ -18,7 +18,7 @@ class Resident:
         self.assistant = assistant
         self.create_panel = create_panel
         self.panel = None
-        self.events = Queue()
+        self.events = SimpleQueue()
         self.available_update = None
         self.update_busy = False
         self.installing = False
@@ -27,7 +27,7 @@ class Resident:
         self.packaged = getattr(sys, "frozen", False)
         self.microphone = microphone_enabled()
         self.autostart = starts_with_windows()
-        self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.deliver)
+        self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
         root.protocol("WM_DELETE_WINDOW", self.hide)
 
     def run(self, background):
@@ -38,6 +38,7 @@ class Resident:
             self.root.after_idle(acknowledge_startup)
             if self.packaged:
                 self.root.after_idle(self.start_update)
+            self.poll_events()
             self.root.mainloop()
         finally:
             self.closing = True
@@ -99,33 +100,38 @@ class Resident:
         self.closing = True
         self.root.quit()
 
-    def send(self, kind, result):
+    def defer(self, callback, *args):
         if not self.closing:
-            self.events.put((kind, result))
-            self.tray.wake()
+            self.events.put((callback, args))
 
     def submit(self, command):
         if parse(command) == ("exit",):
             self.quit()
             return False
         future = self.assistant.submit(command)
-        future.add_done_callback(lambda completed: self.send("command", completed))
+        future.add_done_callback(lambda completed: self.defer(self.finish_command, completed))
         return True
+
+    def finish_command(self, completed):
+        try:
+            reply = completed.result()
+        except Exception as error:
+            reply = f"No se pudo completar la orden: {error}"
+        self.panel.reply(reply)
 
     def deliver(self):
         while not self.closing:
             try:
-                kind, result = self.events.get_nowait()
+                callback, args = self.events.get_nowait()
             except Empty:
-                break
-            if kind == "command":
-                try:
-                    reply = result.result()
-                except Exception as error:
-                    reply = f"No se pudo completar la orden: {error}"
-                self.panel.reply(reply)
-            else:
-                self.finish_update(*result)
+                return
+            callback(*args)
+
+    def poll_events(self):
+        self.deliver()
+        if not self.closing:
+            visible = self.root.state() in {"normal", "zoomed"}
+            self.root.after(60 if visible else 200, self.poll_events)
 
     def refresh_update(self):
         if self.panel is not None and self.packaged:
@@ -150,9 +156,9 @@ class Resident:
             try:
                 result = install_update(update) if update else latest_update()
             except (OSError, ValueError, KeyError, TypeError) as error:
-                self.send("update", (None, str(error)))
+                self.defer(self.finish_update, None, str(error))
             else:
-                self.send("update", (result, None))
+                self.defer(self.finish_update, result, None)
 
         Thread(target=work, name="jarvis-update", daemon=True).start()
 

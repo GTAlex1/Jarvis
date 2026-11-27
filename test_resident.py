@@ -50,6 +50,8 @@ class ResidentTest(unittest.TestCase):
                     self.assertEqual(root.state(), "withdrawn")
                     self.assertTrue(show_running_instance())
                     root.update()
+                    resident.deliver()
+                    root.update()
                     self.assertEqual(root.state(), "normal")
                     self.assertIsNotNone(resident.panel)
                     panel = resident.panel
@@ -61,6 +63,8 @@ class ResidentTest(unittest.TestCase):
                     self.assertEqual(root.state(), "withdrawn")
                     self.assertFalse(self.is_animated(root))
                     self.assertTrue(show_running_instance())
+                    root.update()
+                    resident.deliver()
                     root.update()
                     self.assertIs(resident.panel, panel)
                     self.assertEqual(root.state(), "normal")

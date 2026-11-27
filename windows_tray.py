@@ -9,7 +9,6 @@ WINDOW_CLASS = "GTAlex1.Jarvis.Resident.57D0676F"
 MUTEX_NAME = "Local\\" + WINDOW_CLASS
 OPEN_MESSAGE = WINDOW_CLASS + ".Open"
 WM_TRAY = 0x8001  # WM_APP + 1
-WM_RESULTS = 0x8002
 WM_NULL = 0
 WM_CONTEXTMENU = 0x007B
 WM_RBUTTONUP = 0x0205
@@ -83,12 +82,12 @@ def show_running_instance():
 
 
 class WindowsTray:
-    def __init__(self, root, show, menu_items, run_action, deliver_results):
+    def __init__(self, root, show, menu_items, run_action, defer):
         self.root = root
         self.show = show
         self.menu_items = menu_items
         self.run_action = run_action
-        self.deliver_results = deliver_results
+        self.defer = defer
         self.retry = None
         self.visible = False
         self.version4 = False
@@ -173,29 +172,27 @@ class WindowsTray:
             self.retry = self.root.after(1500, self.add_icon, retries - 1)
         return self.visible
 
-    def wake(self):
-        window = self.window
-        if window:
-            self.user.PostMessageW(window, WM_RESULTS, 0, 0)
+    def restore_icon(self):
+        if self.retry is not None:
+            self.root.after_cancel(self.retry)
+        self.add_icon()
 
     def window_proc(self, window, message, wp, lp):
+        # Tk may be inside its native event dispatcher here. Queue Python
+        # callbacks and let the resident call Tk once the dispatch is over.
         if message == self.open_message:
-            self.root.after_idle(self.show)
-        elif message == WM_RESULTS:
-            self.root.after_idle(self.deliver_results)
+            self.defer(self.show)
         elif message == self.taskbar_created:
-            if self.retry is not None:
-                self.root.after_cancel(self.retry)
-            self.retry = self.root.after_idle(self.add_icon)
+            self.defer(self.restore_icon)
         elif message == WM_TRAY:
             event = lp & 0xFFFF
             if event in (NIN_SELECT, NIN_KEYSELECT, WM_LBUTTONDBLCLK):
-                self.root.after_idle(self.show)
+                self.defer(self.show)
             elif event == WM_CONTEXTMENU and self.version4:
                 point = c.c_short(wp & 0xFFFF).value, c.c_short((wp >> 16) & 0xFFFF).value
-                self.root.after_idle(self.popup, point)
+                self.defer(self.popup, point)
             elif event == WM_RBUTTONUP and not self.version4:
-                self.root.after_idle(self.popup, (-1, -1))
+                self.defer(self.popup, (-1, -1))
         else:
             return self.user.DefWindowProcW(window, message, wp, lp)
         return 0

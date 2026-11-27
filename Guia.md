@@ -11,7 +11,7 @@ GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el
 - `windows_tray.py` registra el icono con Win32. Un mutex por sesión de Windows limita JARVIS a una instancia. Una segunda apertura manual solo pide mostrar el panel existente. La bandeja recupera el icono al reiniciarse Explorer.
 - `preferences.py` guarda la preferencia del micrófono y administra el inicio de sesión en el registro del usuario. `--background` inicia JARVIS en la bandeja. Para probarlo desde el código usa `python jarvis_gui.py --background`.
 
-Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel recibe un aviso cuando hay resultados y suspende la animación al ocultarse. La comprobación de voz permanente queda pendiente. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
+Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel procesa los eventos de la bandeja y los resultados mediante una cola y suspende la animación al ocultarse. La comprobación de voz permanente queda pendiente. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
 
 ## Ventanas y pantallas
 
