@@ -1,6 +1,8 @@
 import ctypes as c
 from ctypes import wintypes as w
 from pathlib import PureWindowsPath
+import json
+import os
 import re
 import subprocess
 import sys
@@ -71,6 +73,19 @@ def matching_windows(windows, query):
     return [window for window in windows if query in normalize(window[1])]
 
 
+def launch_matches(apps, query):
+    names = {query}
+    for executable, aliases in APP_NAMES.items():
+        group = {normalize(alias) for alias in (executable, *aliases)}
+        if query in group:
+            names = group
+            break
+    exact = [app for app in apps if normalize(app[0]) in names]
+    if exact:
+        return exact
+    return [app for app in apps if query in normalize(app[0])]
+
+
 def half(bounds, side):
     x, y, right, bottom = bounds
     middle = x + (right - x) // 2
@@ -107,6 +122,7 @@ class Desktop:
             "EnumDisplayMonitors": ([w.HDC, c.POINTER(w.RECT), self.monitor_callback, w.LPARAM], w.BOOL),
             "GetMonitorInfoW": ([w.HMONITOR, c.POINTER(MonitorInfo)], w.BOOL),
             "EnumWindows": ([self.window_callback, w.LPARAM], w.BOOL),
+            "GetShellWindow": ([], w.HWND),
             "GetWindowThreadProcessId": ([w.HWND, c.POINTER(w.DWORD)], w.DWORD),
             "IsWindowVisible": ([w.HWND], w.BOOL),
             "GetWindowTextLengthW": ([w.HWND], c.c_int),
@@ -159,10 +175,11 @@ class Desktop:
     def windows(self):
         windows = []
         executables = {}
+        shell_window = self.api.GetShellWindow()
 
         @self.window_callback
         def collect(handle, _data):
-            if self.api.IsWindowVisible(handle):
+            if handle != shell_window and self.api.IsWindowVisible(handle):
                 title = c.create_unicode_buffer(self.api.GetWindowTextLengthW(handle) + 1)
                 if self.api.GetWindowTextW(handle, title, len(title)):
                     pid = w.DWORD()
@@ -175,6 +192,54 @@ class Desktop:
         if not self.api.EnumWindows(collect, 0):
             raise c.WinError(c.get_last_error())
         return windows
+
+    def applications(self):
+        script = """
+        $ErrorActionPreference = 'Stop'
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        ConvertTo-Json -InputObject @(Get-StartApps | Select-Object Name, AppID) -Compress
+        """
+        powershell = os.path.join(os.environ["SystemRoot"], "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, encoding="utf-8-sig", timeout=12,
+                creationflags=subprocess.CREATE_NO_WINDOW, check=True,
+            )
+            return sorted({
+                (app["Name"], app["AppID"]) for app in json.loads(result.stdout)
+                if app.get("Name") and app.get("AppID")
+            }, key=lambda app: normalize(app[0]))
+        except (subprocess.SubprocessError, ValueError) as error:
+            raise OSError("Windows no pudo consultar las aplicaciones del menú Inicio.") from error
+
+    def open_app(self, title):
+        matches = launch_matches(self.applications(), title)
+        if not matches:
+            return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
+        if len(matches) > 1:
+            names = "\n".join(f"  {name}" for name, _ in matches)
+            return f"Encontré varias aplicaciones. Usa su nombre completo:\n{names}"
+        name, app_id = matches[0]
+        if title == normalize("Explorador") or normalize(name) in {"explorador de archivos", "file explorer"}:
+            os.startfile(os.environ["SystemRoot"] + r"\explorer.exe")
+        else:
+            os.startfile("shell:AppsFolder\\" + app_id)
+        return f"Solicité a Windows que abriera «{name}»."
+
+    def minimize(self, title):
+        matches = matching_windows(self.windows(), title)
+        if not matches:
+            return f"No encontré ninguna ventana abierta que coincida con «{title}»."
+        minimized = []
+        failed = []
+        for handle, name, _ in matches:
+            if not self.api.IsIconic(handle):
+                self.api.ShowWindow(handle, 6)  # SW_MINIMIZE
+            (minimized if self.api.IsIconic(handle) else failed).append(name)
+        lines = [f"Minimicé «{name}»." for name in minimized]
+        lines.extend(f"No pude minimizar «{name}»." for name in failed)
+        return "\n".join(lines)
 
     def move(self, title, side, screen):
         screens = self.screens()
@@ -254,7 +319,8 @@ def listen():
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-HELP = """Escribe una orden o pulsa Intro para usar el micrófono.
+HELP = """Órdenes de escritorio
+  Abre VSCode | Minimiza Chrome | Aplicaciones
   Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
   VSCode izquierda | Chrome derecha monitor 2 | Visual Studio Code pantalla completa
   pantallas | ventanas | ayuda | salir"""
@@ -274,6 +340,11 @@ def execute(desktop, command):
             f"{app_label(executable)} · {title}" if executable else title
             for _, title, executable in desktop.windows()
         ) or "No encontré ventanas."
+    if key == "aplicaciones":
+        return "\n".join(name for name, _ in desktop.applications()) or "No encontré aplicaciones en el menú Inicio."
+    if action := re.fullmatch(r"(abre|abrir|minimiza|minimizar) (?:(?:el|la) )?(.+)", " ".join(key.split())):
+        verb, title = action.groups()
+        return desktop.open_app(title) if verb.startswith("abr") else desktop.minimize(title)
     if move := parse_move(command):
         return desktop.move(*move)
     return "Todavía no sé hacer eso. Escribe «ayuda» para ver las órdenes disponibles."
@@ -284,7 +355,7 @@ def main():
         print("JARVIS necesita Windows 10 o 11 para controlar el escritorio.")
         return 1
     desktop = Desktop()
-    print("JARVIS\n" + HELP)
+    print("JARVIS · Pulsa Intro con la línea vacía para dictar.\n" + HELP)
     while True:
         try:
             command = input("\nTú > ").strip()
