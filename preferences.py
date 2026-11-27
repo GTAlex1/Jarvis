@@ -1,4 +1,6 @@
 """Current-user settings for the Windows desktop and console entry points."""
+from dataclasses import asdict, dataclass
+import json
 import sys
 from pathlib import Path
 
@@ -65,3 +67,36 @@ def set_microphone(enabled):
 
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "MicrophoneEnabled", 0, winreg.REG_DWORD, int(enabled))
+
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    enabled: bool = False
+    device: str = ""
+    voice: str = ""
+    volume: int = 75
+    sensitivity: int = 3
+
+    def __post_init__(self):
+        if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):
+            raise ValueError("Configuración de voz no válida.")
+        if type(self.volume) is not int or not 0 <= self.volume <= 100:
+            raise ValueError("El volumen debe estar entre 0 y 100.")
+        if type(self.sensitivity) is not int or not 1 <= self.sensitivity <= 5:
+            raise ValueError("La sensibilidad debe estar entre 1 y 5.")
+
+
+def voice_settings():
+    try:
+        settings = json.loads(read_value(SETTINGS_KEY, "VoiceSettings", "{}"))
+        return VoiceSettings(**settings)
+    except (TypeError, ValueError):
+        return VoiceSettings()
+
+
+def save_voice_settings(settings):
+    import winreg
+
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "VoiceSettings", 0, winreg.REG_SZ, json.dumps(asdict(settings)))

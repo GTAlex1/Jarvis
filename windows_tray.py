@@ -90,6 +90,7 @@ class WindowsTray:
         self.defer = defer
         self.retry = None
         self.visible = False
+        self.tooltip = "JARVIS"
         self.version4 = False
         self.window = None
 
@@ -162,7 +163,7 @@ class WindowsTray:
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP
         data.uCallbackMessage = WM_TRAY
         data.hIcon = self.icon
-        data.szTip = "JARVIS"
+        data.szTip = self.tooltip
         self.visible = bool(self.notify(NIM_ADD, c.byref(data)) or
                             self.notify(NIM_MODIFY, c.byref(data)))
         if self.visible:
@@ -171,6 +172,14 @@ class WindowsTray:
         elif retries:
             self.retry = self.root.after(1500, self.add_icon, retries - 1)
         return self.visible
+
+    def set_tooltip(self, text):
+        self.tooltip = text[:127]
+        if self.visible:
+            data = self.notify_data()
+            data.uFlags = NIF_TIP | NIF_SHOWTIP
+            data.szTip = self.tooltip
+            self.notify(NIM_MODIFY, c.byref(data))
 
     def restore_icon(self):
         if self.retry is not None:

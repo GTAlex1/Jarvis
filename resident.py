@@ -1,4 +1,7 @@
 """Own the desktop session, tray and updater independently of the command panel."""
+from collections import deque
+from concurrent.futures import Future
+from dataclasses import replace
 from queue import Empty, SimpleQueue
 import sys
 from threading import Thread
@@ -7,8 +10,10 @@ from tkinter import messagebox
 
 from assistant import Assistant
 from commands import parse
-from preferences import microphone_enabled, set_microphone, set_startup, starts_with_windows
+from preferences import (microphone_enabled, save_voice_settings, set_microphone,
+                         set_startup, starts_with_windows, voice_settings)
 from updater import VERSION, acknowledge_startup, install_update, latest_update
+from voice_service import STATE_LABELS, VoiceService
 from windows_tray import WindowsTray, show_running_instance, single_instance
 
 
@@ -27,6 +32,14 @@ class Resident:
         self.packaged = getattr(sys, "frozen", False)
         self.microphone = microphone_enabled()
         self.autostart = starts_with_windows()
+        self.voice_options = voice_settings()
+        self.voice_status = ("disabled" if self.microphone else "muted", "")
+        self.voice_log = deque(maxlen=24)
+        self.voice = VoiceService(
+            self.request_voice,
+            lambda state, detail: self.defer(self.show_voice_status, state, detail),
+            lambda *catalog: self.defer(self.show_catalog, *catalog),
+        )
         self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
         root.protocol("WM_DELETE_WINDOW", self.hide)
 
@@ -36,20 +49,28 @@ class Resident:
             if not background or not icon_added:
                 self.show()
             self.root.after_idle(acknowledge_startup)
+            self.root.after_idle(self.configure_voice)
             if self.packaged:
                 self.root.after_idle(self.start_update)
             self.poll_events()
             self.root.mainloop()
         finally:
             self.closing = True
+            self.voice.close()
             self.tray.close()
 
     def show(self):
         if self.closing:
             return
         if self.panel is None:
-            self.panel = self.create_panel(self.root, self.submit, self.update_clicked, self.packaged)
+            self.panel = self.create_panel(
+                self.root, self.submit, self.update_clicked, self.packaged, self.open_voice_settings,
+            )
             self.refresh_update()
+            self.panel.voice_status(*self.voice_status)
+            for text, tag in self.voice_log:
+                self.panel.voice_message(text, tag)
+            self.voice_log.clear()
         self.root.deiconify()
         self.root.lift()
         self.panel.focus()
@@ -66,6 +87,8 @@ class Resident:
             ("Abrir JARVIS", False, self.show),
             ("Micrófono", self.microphone, self.toggle_microphone),
             ("Iniciar con Windows", self.autostart, self.toggle_startup),
+            ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
+            ("Ajustes de voz…", False, self.open_voice_settings),
             None,
             ("Salir de JARVIS", False, self.quit),
         )
@@ -83,6 +106,36 @@ class Resident:
         desired = not self.microphone
         set_microphone(desired)
         self.microphone = desired
+        self.configure_voice()
+
+    def configure_voice(self):
+        if not self.microphone or not self.voice_options.enabled:
+            self.show_voice_status("disabled" if self.microphone else "muted", "")
+        self.voice.configure(self.voice_options, self.microphone)
+
+    def toggle_voice(self):
+        self.save_voice(replace(self.voice_options, enabled=not self.voice_options.enabled))
+
+    def save_voice(self, options):
+        save_voice_settings(options)
+        self.voice_options = options
+        self.configure_voice()
+
+    def open_voice_settings(self):
+        self.show()
+        self.panel.open_voice_settings(self.voice_options, self.save_voice, self.voice.refresh_catalog)
+
+    def show_catalog(self, *catalog):
+        if self.panel is not None:
+            self.panel.voice_catalog(*catalog)
+
+    def show_voice_status(self, state, detail):
+        if state not in {"disabled", "muted"} and (not self.microphone or not self.voice_options.enabled):
+            return
+        self.voice_status = (state, detail)
+        self.tray.set_tooltip(f"JARVIS · {STATE_LABELS[state]}")
+        if self.panel is not None:
+            self.panel.voice_status(state, detail)
 
     def toggle_startup(self):
         desired = not self.autostart
@@ -104,20 +157,57 @@ class Resident:
         if not self.closing:
             self.events.put((callback, args))
 
-    def submit(self, command):
+    def is_exit_command(self, command):
         if parse(command) == ("exit",):
             self.quit()
+            return True
+        return False
+
+    def submit(self, command):
+        if self.is_exit_command(command):
             return False
         future = self.assistant.submit(command)
         future.add_done_callback(lambda completed: self.defer(self.finish_command, completed))
         return True
 
-    def finish_command(self, completed):
+    @staticmethod
+    def command_result(completed):
         try:
-            reply = completed.result()
+            return completed.result()
         except Exception as error:
-            reply = f"No se pudo completar la orden: {error}"
-        self.panel.reply(reply)
+            return f"No se pudo completar la orden: {error}"
+
+    def finish_command(self, completed):
+        self.panel.reply(self.command_result(completed))
+
+    def request_voice(self, command):
+        reply = Future()
+        self.defer(self.dispatch_voice, command, reply)
+        return reply
+
+    def dispatch_voice(self, command, reply):
+        if not self.microphone or not self.voice_options.enabled:
+            reply.cancel()
+            return
+        if not reply.set_running_or_notify_cancel():
+            return
+        if self.is_exit_command(command):
+            reply.set_result("")
+            return
+        self.record_voice(f"VOZ · {command}", "you")
+        future = self.assistant.submit(command)
+        future.add_done_callback(lambda completed: self.defer(self.finish_voice, completed, reply))
+
+    def finish_voice(self, completed, reply):
+        text = self.command_result(completed)
+        self.record_voice(text, "reply")
+        reply.set_result(text)
+
+    def record_voice(self, text, tag):
+        if self.panel is None:
+            self.voice_log.append((text, tag))
+        else:
+            self.panel.voice_message(text, tag)
 
     def deliver(self):
         while not self.closing:

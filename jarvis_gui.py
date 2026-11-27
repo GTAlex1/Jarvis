@@ -1,9 +1,11 @@
 import math
 import sys
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
+from preferences import VoiceSettings
 from updater import VERSION
+from voice_service import STATE_LABELS
 
 BG = "#060b17"
 PANEL = "#0d172b"
@@ -14,7 +16,7 @@ MUTED = "#9aadc7"
 FONT = "Segoe UI"
 
 
-def create_panel(root, submit_command, check_update, packaged):
+def create_panel(root, submit_command, check_update, packaged, open_voice_settings):
     root.title("JARVIS")
     root.geometry("980x640")
     root.minsize(650, 460)
@@ -74,7 +76,9 @@ def create_panel(root, submit_command, check_update, packaged):
     root.bind("<Unmap>", unmapped)
 
     status = tk.StringVar(value="Listo")
-    tk.Label(rail, textvariable=status, bg=PANEL, fg=CYAN, font=("Consolas", 10)).pack(pady=(0, 10))
+    tk.Label(rail, textvariable=status, bg=PANEL, fg=CYAN, font=("Consolas", 10)).pack()
+    voice_indicator = tk.Label(rail, bg=PANEL, fg=MUTED, wraplength=222, font=(FONT, 9))
+    voice_indicator.pack(pady=(4, 10), padx=12)
     toolbar = tk.Frame(rail, bg=PANEL)
     toolbar.pack(fill="x", padx=12, pady=(0, 12))
     tk.Label(root, text="Control de escritorio", bg=BG, fg=TEXT, font=(FONT, 20, "bold")).grid(
@@ -136,6 +140,8 @@ def create_panel(root, submit_command, check_update, packaged):
     for command in ("aplicaciones", "ventanas", "pantallas", "ayuda"):
         button(toolbar, command.capitalize(), lambda key=command: run(key)).pack(fill="x", pady=3)
 
+    button(toolbar, "Ajustes de voz", open_voice_settings).pack(fill="x", pady=3)
+
     if packaged:
         update_status = tk.StringVar(value=f"Versión {VERSION}")
         tk.Label(rail, textvariable=update_status, bg=PANEL, fg=MUTED,
@@ -174,23 +180,141 @@ def create_panel(root, submit_command, check_update, packaged):
     button(form, "Enviar  ↵", submit, primary=True).grid(row=1, column=1, padx=(10, 0), sticky="ns")
     entry.bind("<Return>", submit)
     append("Prueba «Chrome esquina superior derecha» o «cierra el Bloc de notas».", "hint")
-    return Panel(entry, reply, update_controls)
+    return Panel(root, entry, reply, append, update_controls, voice_indicator)
 
 
 class Panel:
-    def __init__(self, entry, reply, update_controls):
+    def __init__(self, root, entry, reply, append, update_controls, voice_indicator):
+        self.root = root
         self.entry = entry
         self.reply = reply
+        self.voice_message = append
         self.update_controls = update_controls
+        self.indicator = voice_indicator
+        self.voice_dialog = None
 
     def focus(self):
         self.entry.focus_set()
+
+    def voice_status(self, state, detail):
+        colors = {"listening": "#73ffc1", "processing": "#ffd37a", "executing": "#ffd37a",
+                  "unavailable": "#ffadad", "disabled": MUTED, "muted": MUTED}
+        text = f"● {STATE_LABELS[state]}"
+        if detail:
+            text += f"\n{detail}"
+        self.indicator.configure(text=text, fg=colors.get(state, CYAN))
+
+    def open_voice_settings(self, settings, save, refresh):
+        if self.voice_dialog is not None and self.voice_dialog.window.winfo_exists():
+            self.voice_dialog.window.lift()
+            return
+        self.voice_dialog = VoiceDialog(self.root, settings, save, refresh)
+
+    def voice_catalog(self, *catalog):
+        if self.voice_dialog is not None and self.voice_dialog.window.winfo_exists():
+            self.voice_dialog.show_catalog(*catalog)
+
+
+class VoiceDialog:
+    def __init__(self, parent, settings, save, refresh):
+        self.window = window = tk.Toplevel(parent, bg=BG, padx=20, pady=16)
+        window.title("JARVIS · Ajustes de voz")
+        window.transient(parent)
+        window.resizable(False, False)
+        window.columnconfigure(1, weight=1)
+        self.save = save
+        self.refresh = refresh
+        self.enabled = tk.BooleanVar(window, settings.enabled)
+        self.volume = tk.IntVar(window, settings.volume)
+        self.sensitivity = tk.IntVar(window, settings.sensitivity)
+        box = tk.Checkbutton(
+            window, text="Escucha permanente", variable=self.enabled, bg=BG, fg=TEXT,
+            activebackground=BG, activeforeground=CYAN, selectcolor=PANEL, font=(FONT, 11, "bold"),
+        )
+        box.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        self.microphone = self.combobox("Micrófono", 1)
+        self.speaker = self.combobox("Voz de respuesta", 2)
+        self.slider("Volumen", self.volume, 0, 100, 3)
+        self.slider("Sensibilidad", self.sensitivity, 1, 5, 4)
+
+        self.notice = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
+        self.notice.grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        controls = tk.Frame(window, bg=BG)
+        controls.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.reload = ttk.Button(controls, text="Actualizar lista", command=self.load)
+        self.reload.pack(side="left")
+        ttk.Button(controls, text="Guardar", command=self.commit).pack(side="right")
+        ttk.Button(controls, text="Cancelar", command=window.destroy).pack(side="right", padx=8)
+
+        self.microphones = self.populate(self.microphone, "Predeterminado de Windows", [], settings.device)
+        self.speakers = self.populate(self.speaker, "Automática (prioriza español)", [], settings.voice)
+        self.load()
+
+    def combobox(self, label, row):
+        self.label(label, row)
+        box = ttk.Combobox(self.window, state="readonly", width=40)
+        box.grid(row=row, column=1, sticky="ew", pady=4)
+        return box
+
+    def label(self, text, row):
+        tk.Label(self.window, text=text, bg=BG, fg=TEXT, font=(FONT, 10)).grid(
+            row=row, column=0, sticky="w", padx=(0, 12), pady=4,
+        )
+
+    def slider(self, label, variable, first, last, row):
+        self.label(label, row)
+        tk.Scale(
+            self.window, from_=first, to=last, variable=variable, orient="horizontal",
+            bg=BG, fg=CYAN, troughcolor=PANEL, highlightthickness=0, activebackground=EDGE,
+        ).grid(row=row, column=1, sticky="ew")
+
+    @staticmethod
+    def populate(box, automatic, entries, selected):
+        options = {automatic: "", **dict(entries)}
+        if selected and selected not in options.values():
+            options[f"{selected} (no disponible)"] = selected
+        box.configure(values=tuple(options))
+        box.set(next(label for label, value in options.items() if value == selected))
+        return options
+
+    def load(self):
+        self.reload.configure(state="disabled")
+        self.notice.configure(text="Buscando micrófonos y voces de Windows…")
+        self.refresh()
+
+    def show_catalog(self, devices, voices, error):
+        self.microphones = self.populate(
+            self.microphone, "Predeterminado de Windows", ((item.label, item.key) for item in devices),
+            self.microphones[self.microphone.get()],
+        )
+        self.speakers = self.populate(
+            self.speaker, "Automática (prioriza español)", ((f"{name} ({lang})", name) for name, lang in voices),
+            self.speakers[self.speaker.get()],
+        )
+        self.notice.configure(text=error)
+        self.reload.configure(state="normal")
+
+    def commit(self):
+        try:
+            self.save(VoiceSettings(
+                enabled=self.enabled.get(), device=self.microphones[self.microphone.get()],
+                voice=self.speakers[self.speaker.get()], volume=self.volume.get(),
+                sensitivity=self.sensitivity.get(),
+            ))
+        except (OSError, ValueError) as error:
+            messagebox.showerror("JARVIS", str(error), parent=self.window)
+        else:
+            self.window.destroy()
 
 
 def main():
     if sys.platform != "win32":
         print("JARVIS necesita Windows 10 u 11 para controlar el escritorio.")
         return 1
+    if len(sys.argv) == 4 and sys.argv[1] == "--diagnostico-voz":
+        from voice_probe import report
+
+        return report(sys.argv[2], sys.argv[3])
     from resident import launch
 
     return launch(create_panel, background="--background" in sys.argv[1:])

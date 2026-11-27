@@ -1,6 +1,6 @@
 # JARVIS para Windows
 
-Asistente gráfico que organiza ventanas entre monitores con órdenes en español. La interfaz tiene un núcleo animado, un historial de respuestas y accesos a **Aplicaciones**, **Pantallas**, **Ventanas** y **Ayuda**.
+Asistente residente para controlar ventanas, aplicaciones y otras funciones de Windows con órdenes escritas o de voz en español. La interfaz tiene un núcleo animado, un historial de respuestas y accesos a **Aplicaciones**, **Pantallas**, **Ventanas** y **Ayuda**.
 
 ## Descargar y abrir
 
@@ -12,11 +12,23 @@ Asistente gráfico que organiza ventanas entre monitores con órdenes en españo
 
 Desde la versión 0.5.0, la X oculta el panel y JARVIS sigue abierto en el área de notificación de Windows. Si no ves el icono, búscalo bajo la flecha junto al reloj. Abre el panel desde el icono o vuelve a ejecutar `JARVIS.exe` para recuperar la misma instancia.
 
-- **Micrófono** habilita o deshabilita el dictado manual de JARVIS y guarda tu preferencia. El panel admite comandos escritos. El modo residente no abre el micrófono ni detecta «Jarvis» por voz.
+- **Micrófono** permite bloquear toda escucha de JARVIS. **Escucha permanente** activa la palabra «Jarvis» y está desactivada por defecto.
+- **Ajustes de voz…** permite elegir el micrófono, la voz instalada en Windows, el volumen y la sensibilidad. Los cambios se guardan para futuros arranques.
 - **Iniciar con Windows** está desactivado por defecto. Al activarlo, JARVIS se abre en la bandeja cuando inicias sesión con tu cuenta, sin pedir permisos de administrador. Si cambias el ejecutable de carpeta, vuelve a activar la opción desde la nueva ubicación. También puedes gestionarla desde **Configuración → Aplicaciones → Inicio** de Windows.
 - **Salir de JARVIS** cierra todo el programa. También puedes escribir `salir` en el panel.
 
 La animación se detiene al ocultar o minimizar el panel.
+
+## Usar JARVIS por voz
+
+1. Abre **Ajustes de voz** en el panel o en la bandeja. Elige el micrófono y activa **Escucha permanente**. El interruptor **Micrófono** de la bandeja debe estar marcado.
+2. Puedes cerrar el panel con la X. Di **«Jarvis, abre Spotify»** de corrido, o di **«Jarvis»**, haz una pausa y luego da la orden. Spotify debe aparecer en el menú Inicio para que JARVIS pueda abrirlo.
+3. JARVIS dispone de hasta **6 segundos** tras la activación para reconocer la orden. El panel muestra el estado de voz y el icono de la bandeja lo indica al pasar el ratón.
+4. Después de ejecutar la orden, JARVIS responde con la voz elegida y vuelve a esperar. El **volumen 0** silencia las respuestas. Con **Automática**, prioriza las voces en español disponibles en el motor clásico de Windows.
+
+La detección y el reconocimiento funcionan en el equipo. El ejecutable incluye los modelos y puede usarlos sin conexión ni claves. JARVIS procesa el audio en memoria, descarta la entrada durante su propia respuesta y guarda las preferencias de voz en tu cuenta de Windows. El historial del panel muestra texto durante la sesión.
+
+Si el micrófono seleccionado se desconecta, JARVIS muestra el estado y vuelve a intentarlo. Puedes elegir otro desde **Ajustes de voz** o comprobar el permiso de micrófono para aplicaciones de escritorio en Windows.
 
 ## Actualizaciones
 
@@ -62,6 +74,14 @@ Abrir aplicaciones utiliza las entradas del menú Inicio. El botón **Aplicacion
 
 En Windows 10 u 11, instala [Python 3.10 o posterior](https://www.python.org/downloads/windows/) con Tcl/Tk. Ejecuta `python jarvis_gui.py` o haz doble clic en `Abrir-Jarvis.cmd`. Si alguno de los comandos `py` o `python` falta, el lanzador prueba el otro.
 
-Para dictar, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. Con **Micrófono** habilitado, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
+Para usar la escucha permanente desde el código, instala las dependencias y prepara el modelo antes de iniciar el panel. La versión empaquetada se compila con Python 3.12 x64.
 
-Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).
+```powershell
+python -m pip install -r requirements-voice.txt
+python prepare_voice_model.py
+python jarvis_gui.py
+```
+
+Para el dictado manual de consola, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. Con **Micrófono** habilitado, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
+
+Las pruebas que requieren tu equipo están en la [lista de comprobación manual](Guia.md#pruebas-con-tu-micrófono). Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).

@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+assets/vosk-model-small-es-0.42/
+build/
+dist/

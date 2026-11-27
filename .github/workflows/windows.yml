@@ -5,6 +5,10 @@ on:
     paths:
       - .github/workflows/windows.yml
       - '*.py'
+      - requirements-voice.txt
+      - assets/**
+      - tests/voice/**
+      - docs/wiki/**
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,13 +22,43 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m compileall -q -x "/\.git/" .
-      - name: Prueba comandos, ventanas reales y bandeja
-        run: python -m unittest -v test_commands test_resident
+      - run: python -m pip install -r requirements-voice.txt pyinstaller==6.16.0
+      - run: python prepare_voice_model.py
+      - run: python -m compileall -q .
+      - name: Prueba comandos, bandeja, preferencias y voz sin micrófono físico
+        run: python -m unittest -v test_commands test_resident test_voice
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9')"
-      - run: python -m pip install pyinstaller==6.16.0
-      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name JARVIS jarvis_gui.py
+      - name: Empaqueta JARVIS y los motores de voz
+        shell: pwsh
+        run: |
+          $acoustic = python -c "from pathlib import Path; from pocketsphinx import get_model_path; print(Path(get_model_path()) / 'en-us' / 'en-us')"
+          if ($LASTEXITCODE -ne 0) { throw 'No se encontró el modelo acústico.' }
+          $portaudio = python -c "import _sounddevice_data; from pathlib import Path; print(Path(next(iter(_sounddevice_data.__path__))) / 'portaudio-binaries')"
+          if ($LASTEXITCODE -ne 0) { throw 'No se encontró PortAudio.' }
+          $options = @(
+            '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS',
+            '--exclude-module', 'numpy', '--collect-binaries', 'vosk',
+            '--copy-metadata', 'pocketsphinx', '--copy-metadata', 'sounddevice',
+            '--add-binary', "${portaudio}/libportaudio64bit.dll:_sounddevice_data/portaudio-binaries",
+            '--add-binary', "${portaudio}/libportaudio64bit-asio.dll:_sounddevice_data/portaudio-binaries",
+            '--add-data', "${acoustic}:pocketsphinx/model/en-us/en-us",
+            '--add-data', 'assets:assets'
+          )
+          python -m PyInstaller @options jarvis_gui.py
+          if ($LASTEXITCODE -ne 0) { throw 'Falló el empaquetado.' }
+          $limit = python -c "from updater import MAX_SIZE; print(MAX_SIZE)"
+          if ((Get-Item dist/JARVIS.exe).Length -gt [long]$limit) { throw 'El ejecutable supera el límite del actualizador.' }
+      - name: Prueba los motores dentro del ejecutable
+        shell: pwsh
+        run: |
+          $process = Start-Process (Resolve-Path dist/JARVIS.exe) -ArgumentList '--diagnostico-voz', 'tests/voice', 'diagnostico-voz.json' -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            Stop-Process -Id $process.Id -Force
+            throw 'El diagnóstico de voz excedió el tiempo de espera.'
+          }
+          Get-Content diagnostico-voz.json -Encoding UTF8
+          if ($process.ExitCode -ne 0) { throw 'Falló el diagnóstico de voz del ejecutable.' }
       - name: Comprueba que se abre la ventana
         shell: pwsh
         run: |
@@ -44,8 +78,30 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows-x64
-          path: dist/JARVIS.exe
+          path: |
+            dist/JARVIS.exe
+            diagnostico-voz.json
           if-no-files-found: error
+      - name: Obtiene la wiki
+        if: github.ref == 'refs/heads/main'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          ref: master
+          path: wiki-publish
+      - name: Publica la documentación en la wiki
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          Copy-Item docs/wiki/Home.md wiki-publish/Home.md
+          git -C wiki-publish add Home.md
+          git -C wiki-publish diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          if ($LASTEXITCODE -ne 1) { throw 'No se pudo comprobar el cambio en la wiki.' }
+          git -C wiki-publish -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m "Actualiza la guía de JARVIS en Windows"
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el commit de la wiki.' }
+          git -C wiki-publish push origin HEAD:master
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la wiki.' }
       - name: Publica una versión nueva
         if: github.ref == 'refs/heads/main'
         shell: pwsh

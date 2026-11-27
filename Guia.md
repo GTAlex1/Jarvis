@@ -2,7 +2,7 @@
 
 ## Ejecutable de Windows
 
-GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el arranque, el cierre a la bandeja, la instancia única y la sustitución y recuperación del ejecutable. El resultado se adjunta como `JARVIS-Windows-x64` a la ejecución. Puedes abrir la [última compilación](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml) desde el repositorio.
+GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el arranque, la bandeja, la instancia única, los motores de voz dentro del ejecutable y la sustitución y recuperación del archivo anterior. El flujo también comprueba el límite de descarga del actualizador y publica la wiki y la versión después de las pruebas. El resultado se adjunta como `JARVIS-Windows-x64` a la ejecución. Puedes abrir la [última compilación](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml) desde el repositorio.
 
 ## Ciclo de vida del asistente
 
@@ -11,7 +11,7 @@ GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el
 - `windows_tray.py` registra el icono con Win32. Un mutex por sesión de Windows limita JARVIS a una instancia. Una segunda apertura manual solo pide mostrar el panel existente. La bandeja recupera el icono al reiniciarse Explorer.
 - `preferences.py` guarda la preferencia del micrófono y administra el inicio de sesión en el registro del usuario. `--background` inicia JARVIS en la bandeja. Para probarlo desde el código usa `python jarvis_gui.py --background`.
 
-Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel procesa los eventos de la bandeja y los resultados mediante una cola y suspende la animación al ocultarse. La comprobación de voz permanente queda pendiente. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
+Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel procesa los eventos de la bandeja y los resultados mediante una cola y suspende la animación al ocultarse. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
 
 ## Ventanas y pantallas
 
@@ -20,17 +20,46 @@ Los comandos y la consulta de actualizaciones se completan en segundo plano. El 
 - Ejecuta `ventanas` para ver los programas y sus títulos. Si hay dos ventanas de VS Code, usa una parte del título que identifique la ventana que quieres mover.
 - Si la aplicación limita su tamaño mínimo, el asistente muestra las dimensiones solicitadas y las que consiguió aplicar.
 
-## Micrófono
+## Motores de voz
 
-Comprueba que Windows PowerShell puede detectar un motor de reconocimiento en español:
+| Componente | Uso | Empaquetado |
+| --- | --- | --- |
+| PocketSphinx 5.0.4 | Detecta «Jarvis» con un pequeño diccionario de pronunciaciones y sensibilidades configurables. | Wheel x64 de Python 3.12 y modelo acústico incluido. |
+| Vosk 0.3.45 y modelo español `vosk-model-small-es-0.42` | Transcribe en español después de activar la escucha. El modelo se descarga al preparar la compilación, se comprueba con SHA-256 y se libera al pasar 30 segundos de inactividad. | DLL x64 y modelo local. El modelo está distribuido bajo Apache 2.0. |
+| sounddevice 0.5.6 y PortAudio | Enumeran y capturan PCM mono a 16 kHz con WASAPI o un dispositivo compatible. | DLL x64. `RawInputStream` usa buffers de bytes. |
+| System.Speech | Enumera y usa las voces clásicas instaladas de Windows mediante su PowerShell integrado. | Viene de Windows. JARVIS le pasa texto y volumen por la entrada estándar. |
+
+Se eligió un detector pequeño para la espera y un transcriptor separado para la orden. El reconocimiento nativo de System.Speech se conserva en la consola y depende del motor español instalado. El ejecutable integra un transcriptor español para la escucha permanente. Los motores de voz pueden funcionar sin servicios externos.
+
+El trabajador de voz conserva solo un tramo breve de audio y una cola acotada en memoria. Al detectar la palabra de activación, entrega al transcriptor el audio que sigue al final de la palabra y abre una ventana de seis segundos. Envía el texto al mismo ejecutor de comandos del panel. Descarta la captura durante la respuesta y durante el margen posterior de 450 ms, y reinicia el detector antes de volver a esperar. Si el flujo del dispositivo termina o deja de entregar audio, cierra la captura y reintenta cada tres segundos.
+
+Fuentes de los componentes. [PocketSphinx](https://pocketsphinx.readthedocs.io/en/stable/config_params.html) · [Modelos de Vosk](https://alphacephei.com/vosk/models) · [sounddevice](https://python-sounddevice.readthedocs.io/) · [System.Speech](https://learn.microsoft.com/dotnet/api/system.speech.synthesis.speechsynthesizer)
+
+## Pruebas automatizadas
+
+- `python -m unittest -v test_commands test_resident test_voice` comprueba comandos, bandeja, preferencias, reintento ante desconexión simulada, tratamiento de baja confianza y exclusión del audio durante la respuesta. Con los modelos y dependencias instalados, también procesa audio sintético.
+- El diagnóstico del ejecutable abre las DLL y usa los modelos empaquetados para reconocer «Jarvis, abre Spotify» de corrido y con pausa. También comprueba una orden sin activación, el tiempo de espera, la enumeración de dispositivos y la síntesis en memoria, sin accionar Spotify ni usar un micrófono físico.
+- `python -m unittest -v test_update_windows` comprueba el reinicio del ejecutable y la recuperación ante un arranque fallido. Requiere `dist/JARVIS.exe`.
+
+Desde un checkout del proyecto, puedes ejecutar el mismo diagnóstico del binario:
 
 ```powershell
-Add-Type -AssemblyName System.Speech
-[System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
-    Select-Object Name, Culture
+Start-Process .\dist\JARVIS.exe -ArgumentList '--diagnostico-voz', 'tests/voice', 'diagnostico-voz.json' -Wait
+Get-Content diagnostico-voz.json -Encoding UTF8
 ```
 
-Si el listado carece de un motor en español o el dispositivo de entrada falla, puedes seguir dando órdenes escritas.
+## Pruebas con tu micrófono
+
+| Prueba manual | Resultado esperado |
+| --- | --- |
+| Selecciona tu micrófono, activa la escucha permanente y cierra el panel con la X. Di «Jarvis, abre Spotify» de corrido. | Spotify se abre y JARVIS responde con el panel oculto. |
+| Di «Jarvis», espera un segundo y di «abre la calculadora». Repite dejando pasar más de seis segundos. | La primera orden se ejecuta. La segunda necesita volver a decir «Jarvis». |
+| Con los altavoces activos, pide «Jarvis, ayuda» y después prueba tu volumen de respuesta habitual. | JARVIS habla una vez y vuelve a espera sin activarse por su propia voz. |
+| Desenchufa el micrófono USB, vuelve a conectarlo y repite una orden. Si tienes varios dispositivos, cambia de entrada en el panel. | Se indica la pérdida de entrada y se recupera al volver a detectar el dispositivo elegido. |
+| Cambia voz, volumen y sensibilidad. Sal completamente, vuelve a abrir y comprueba los ajustes. | Se conservan las preferencias y se aplica la voz y el volumen seleccionados. |
+| Desmarca **Micrófono** y prueba a activar JARVIS. Después vuelve a marcarlo y desactiva **Escucha permanente**. | Ambas opciones detienen la escucha. Puedes seguir escribiendo órdenes. |
+
+Estas comprobaciones dependen de tu voz, el micrófono, el volumen, el ruido de la habitación y los controladores del equipo.
 
 ## Añadir un comando
 
@@ -39,7 +68,7 @@ Si el listado carece de un motor en español o el dispositivo de entrada falla, 
 3. Incluye un ejemplo en `HELP` y documenta el comando en el README.
 4. Comprueba la frase válida, una variante y una entrada inválida. Para cambios en las ventanas, comprueba también una ventana maximizada y un monitor secundario.
 
-Puedes ejecutar las pruebas con `python -m unittest -v test_commands test_resident`. En Windows, con Explorer activo, se prueba el icono y se verifica que el panel vuelva a abrirse desde la instancia existente. La prueba de actualización `python -m unittest -v test_update_windows` requiere el ejecutable `dist/JARVIS.exe`.
+Con Explorer activo, la prueba de bandeja verifica que el panel vuelva a abrirse desde la instancia existente.
 
 ## Comandos desde la versión 0.4.0
 
