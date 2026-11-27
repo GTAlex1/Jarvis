@@ -70,10 +70,11 @@ class Transcript:
 
 
 class SpanishRecognizer:
-    def __init__(self, model):
+    def __init__(self, model, grammar=()):
         from vosk import KaldiRecognizer
 
-        self.recognizer = KaldiRecognizer(model, RATE)
+        args = (json.dumps(grammar),) if grammar else ()
+        self.recognizer = KaldiRecognizer(model, RATE, *args)
         self.recognizer.SetWords(True)
 
     def feed(self, pcm):
@@ -174,9 +175,17 @@ class Conversation:
         self.notify = notify
         self.active = None
         self.deadline = 0.0
+        self.following = False
+
+    def listen_for_reply(self, now, seconds):
+        self.active = self.recognizer()
+        self.deadline = now + seconds
+        self.following = True
+        self.notify("followup")
 
     def reset(self):
         self.active = None
+        self.following = False
         self.detector.reset()
         self.notify("waiting")
 

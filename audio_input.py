@@ -12,7 +12,7 @@ from time import monotonic
 from pcm_resample import DownsampleFilter
 from voice_diagnostics import LOG
 from voice_recognition import RATE
-from windows_audio import default_input, mapper_names, wasapi_endpoint_ids
+from windows_audio import default_input, mapper_names, wasapi_endpoint_ids, wasapi_mix_formats
 
 try:
     import audioop
@@ -43,6 +43,7 @@ class Route:
     default: bool = False
     mapper: bool = False
     endpoint: str = ""
+    mix: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,12 @@ class Inputs:
             if match is not None:
                 interface = match.api
         return key, interface
+
+    def interfaces_for(self, selection):
+        try:
+            return {route.api for route in self.routes_for(selection)}
+        except CaptureError:
+            return set()
 
     def routes_for(self, selection, endpoint=None, interface="", preferred=""):
         prefer_mapper = selection if self.uses_default(selection) else ""
@@ -159,13 +166,14 @@ def input_devices(refresh=False):
         except sd.PortAudioError as error:
             raise CaptureError(f"PortAudio no pudo enumerar entradas: {error}") from error
         mappers = {}
-        endpoints = {}
-        if sys.platform == "win32":
+        endpoints, mix = {}, {}
+        if sys.platform == "win32" and any(item["max_input_channels"] for item in available):
             mappers = mapper_names()
             indices = [d["index"] for d in available if d["max_input_channels"] and
                        hosts[d["hostapi"]]["name"] == BACKENDS[0]]
             try:
                 endpoints = wasapi_endpoint_ids(sd._libname, indices)
+                mix = wasapi_mix_formats(sd._libname, indices)
             except OSError as error:
                 LOG.warning("captura identidad WASAPI: %s", error)
     routes = []
@@ -181,7 +189,7 @@ def input_devices(refresh=False):
         # Older versions exposed the Windows mapper using a localized title.
         routes.append(Route(index, name, api, round(data["default_samplerate"]),
                             data["max_input_channels"], f"{label} #{occurrences[label]}",
-                            index == host["default_input_device"], mapper, endpoints.get(index, "")))
+                            index == host["default_input_device"], mapper, endpoints.get(index, ""), mix.get(index)))
     return group_routes(routes)
 
 
@@ -194,16 +202,35 @@ class AudioFormat:
 
 
 def input_formats(route):
+    formats = []
+    if route.mix:
+        rate, channels, dtype = route.mix
+        formats.append(AudioFormat(rate, channels, dtype=dtype))
+        formats.append(AudioFormat(rate, channels, dtype="int16" if dtype == "float32" else "float32"))
+        formats.append(AudioFormat(RATE, 1, True))
     rates = (RATE, 48000, 44100, 32000, 22050, 96000, 8000, route.rate)
     channels = dict.fromkeys((1, min(2, route.channels), route.channels))
     for rate in dict.fromkeys(rate for rate in rates if rate > 0):
         for count in channels:
-            yield AudioFormat(rate, count)
+            formats.append(AudioFormat(rate, count))
     if route.api == BACKENDS[0]:
-        yield AudioFormat(RATE, 1, True)
+        formats.append(AudioFormat(RATE, 1, True))
         for rate in dict.fromkeys(rate for rate in (RATE, 48000, 44100, route.rate) if rate > 0):
             for count in channels:
-                yield AudioFormat(rate, count, dtype="float32")
+                formats.append(AudioFormat(rate, count, dtype="float32"))
+    return dict.fromkeys(formats)
+
+
+def reject_recognition(capture, rejected, whole_interface=False):
+    index, fmt = capture.route.index, capture.format
+    if capture.route.api == BACKENDS[0]:
+        rejected.add((index, fmt))
+        count = sum(isinstance(item, tuple) and item[0] == index for item in rejected)
+        if count < 3:
+            return
+    rejected.add(index)
+    if whole_interface:
+        rejected.update(route.index for route in capture.available_routes if route.api == capture.route.api)
 
 
 class PcmConverter:
@@ -250,6 +277,8 @@ class Microphone:
         self.sd = sd
         self.route = route
         self.available_routes = ()
+        self.automatic = False
+        self.notice = ""
         self.format = audio_format
         self.current_default = current_default
         self.expected_default = expected_default
@@ -296,7 +325,7 @@ class Microphone:
         except self.sd.PortAudioError as error:
             LOG.warning("captura cierre %s: %s", self.label, error)
 
-    def read(self):
+    def read(self, timeout=0.2):
         if self.prefetch is not None:
             pcm, self.prefetch = self.prefetch, None
             return pcm
@@ -313,7 +342,7 @@ class Microphone:
         if self.ended.is_set() or not active:
             raise CaptureError(f"{self.label}: Windows interrumpió la captura.")
         try:
-            raw = self.audio.get(timeout=0.2)
+            raw = self.audio.get(timeout=timeout)
         except Empty:
             if monotonic() - self.last_input > 1.5:
                 raise CaptureError(f"{self.label}: el controlador no entrega audio.")
@@ -355,7 +384,7 @@ def probe(capture, changed):
 
 
 @contextmanager
-def capture_input(catalog, selection, changed, rejected=(), interface="", preferred=""):
+def capture_input(catalog, selection, changed, rejected=(), interface="", preferred="", recover_interface=False):
     with ExitStack() as session, portaudio() as sd:
         current, endpoint = None, None
         if sys.platform == "win32":
@@ -366,13 +395,27 @@ def capture_input(catalog, selection, changed, rejected=(), interface="", prefer
                     current = read_default
             except OSError as error:
                 LOG.warning("captura predeterminado: %s", error)
-        routes = catalog.routes_for(selection, endpoint, interface, preferred)
+        note = ""
+        try:
+            routes = catalog.routes_for(selection, endpoint, interface, preferred)
+        except CaptureError:
+            if not (recover_interface and interface):
+                raise
+            routes = catalog.routes_for(selection, endpoint, preferred=preferred)
+            if not routes:
+                raise
+            note = f"{interface} no está disponible para esta entrada. Se usa la selección automática."
+            LOG.warning("captura: %s", note)
+            interface = ""
         silent = None
         failures = []
         for route in routes:
             if route.index in rejected:
                 continue
+            silent_formats = 0
             for fmt in input_formats(route):
+                if (route.index, fmt) in rejected:
+                    continue
                 if changed.is_set():
                     yield None
                     return
@@ -396,13 +439,17 @@ def capture_input(catalog, selection, changed, rejected=(), interface="", prefer
                         return
                     if capture.verified:
                         capture.available_routes = routes
+                        capture.automatic = not interface
+                        capture.notice = note
                         LOG.info("captura activa %s", capture.label)
                         yield capture
                         return
                     LOG.warning("captura silencio digital %s", capture.label)
                     if silent is None:
                         silent = (route, fmt, options)
-                    break
+                    silent_formats += 1
+                    if route.api != BACKENDS[0] or not route.mix or silent_formats >= 3:
+                        break
         if silent and not changed.is_set():
             route, fmt, options = silent
             try:
@@ -410,6 +457,8 @@ def capture_input(catalog, selection, changed, rejected=(), interface="", prefer
             except sd.PortAudioError as error:
                 raise CaptureError(f"No se pudo reabrir la entrada silenciosa: {error}") from error
             capture.available_routes = routes
+            capture.automatic = not interface
+            capture.notice = note
             yield capture
             return
         if changed.is_set():

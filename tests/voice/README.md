@@ -4,3 +4,4 @@ PCM mono de 16 bits, 16 kHz, comprimido con zlib y codificado en Base64. Las mue
 
 - `wake-en.txt` contiene «Jarvis» de Flite, voz SLT, remuestreado a 16 kHz.
 - `open-spotify.txt` contiene «abre Spotify» de eSpeak NG 1.52.0, voz `es`, velocidad 160, remuestreado a 16 kHz.
+- `stop.txt` contiene «Jarvis, para» de eSpeak NG 1.52.0, voz `es`, velocidad 155, remuestreado a 16 kHz.

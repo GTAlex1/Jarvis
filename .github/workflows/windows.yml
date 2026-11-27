@@ -28,7 +28,7 @@ jobs:
       - run: python prepare_voice_model.py
       - run: python -m compileall -q .
       - name: Prueba comandos, bandeja, voz y rutas de captura sin micrófono físico
-        run: python -m unittest -v test_commands test_resident test_voice test_audio_input
+        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9')"
       - name: Empaqueta JARVIS y los motores de voz

@@ -84,10 +84,22 @@ class VoiceSettings:
     volume: int = 75
     sensitivity: int = 3
     interface: str = ''
+    conversational: bool = True
+    context_seconds: int = 25
+    reply_seconds: int = 8
+    speech_detail: str = "normal"
 
     def __post_init__(self):
         if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):
             raise ValueError("Configuración de voz no válida.")
+        if type(self.conversational) is not bool:
+            raise ValueError("Modo conversacional no válido.")
+        if type(self.context_seconds) is not int or not 5 <= self.context_seconds <= 120:
+            raise ValueError("La duración del contexto debe estar entre 5 y 120 segundos.")
+        if type(self.reply_seconds) is not int or not 3 <= self.reply_seconds <= 18:
+            raise ValueError("La espera de respuesta debe estar entre 3 y 18 segundos.")
+        if self.speech_detail not in ("breve", "normal", "ampliado"):
+            raise ValueError("Nivel de detalle no válido.")
         if self.interface not in CAPTURE_INTERFACES.values():
             raise ValueError("Interfaz de captura no válida.")
         if type(self.volume) is not int or not 0 <= self.volume <= 100:

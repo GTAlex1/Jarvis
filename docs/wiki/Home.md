@@ -16,9 +16,15 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja. Los modelos incluidos trabajan localmente. El audio se procesa en memoria y la entrada se descarta durante las respuestas de JARVIS. Puedes desactivar la escucha desde la bandeja y seguir usando el panel.
 
+## Conversar sin abrir el panel
+
+Di «Jarvis, ayuda» y responde «ventanas» cuando te pregunte. Puedes decir «continúa», «repite», «dame más detalles», «sí», «no» o «cancela». Las respuestas largas se pueden escuchar en partes. Si hay más de una coincidencia para una ventana o aplicación, JARVIS te pregunta cuál quieres.
+
+Mientras habla, puedes decir «Jarvis, para» o elegir **Detener respuesta de voz** en la bandeja. **Ajustes de voz** permite cambiar el tiempo de seguimiento, la duración del contexto y el detalle de las respuestas. La voz y los comandos se procesan localmente.
+
 ## Probar un micrófono
 
-En **Ajustes de voz** elige el micrófono y la **Interfaz de captura** por separado. Puedes usar **Automática**, **MME**, **DirectSound** o **WASAPI**. Con **Predeterminado de Windows** y MME o DirectSound se pueden usar los asignadores de Windows.
+En **Ajustes de voz** elige el micrófono y la **Interfaz de captura** por separado. **Automática** prueba rutas compatibles. El menú ofrece **MME**, **DirectSound**, **WASAPI** y **ASIO** cuando están disponibles para el micrófono elegido. Con **Predeterminado de Windows** y MME o DirectSound se pueden usar los asignadores de Windows.
 
 Pulsa **Probar micrófono** y di «abre Spotify». La prueba separa señal, voz y palabras y muestra la transcripción en directo. En modo automático repite la frase si cambia la ruta que muestra el medidor. Puedes hacer la prueba con **Escucha permanente** desactivada.
 

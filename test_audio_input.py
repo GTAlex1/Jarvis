@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from audio_input import (
     BACKENDS, AudioFormat, CaptureError, DefaultInputChanged, Microphone,
-    PcmConverter, Route, capture_input, group_routes,
+    PcmConverter, Route, capture_input, group_routes, input_formats, reject_recognition,
 )
 
 
@@ -28,7 +28,7 @@ class FakeSoundDevice:
         if request not in self.formats:
             raise self.PortAudioError("Invalid sample rate or channel count", -9997)
 
-    def RawInputStream(self, device, samplerate, channels, callback, **_):
+    def RawInputStream(self, device, samplerate, channels, callback, dtype="int16", **_):
         stream = Mock(active=True)
         self.opened.append((device, samplerate, channels, stream))
 
@@ -38,7 +38,8 @@ class FakeSoundDevice:
                 raise amplitude
             if amplitude is not None:
                 frames = samplerate // 20
-                callback(array("h", [amplitude] * frames * channels).tobytes(), frames, None, None)
+                sample = array("f", [amplitude / 32768]) if dtype == "float32" else array("h", [amplitude])
+                callback((sample * frames * channels).tobytes(), frames, None, None)
 
         stream.start.side_effect = start
         return stream
@@ -69,6 +70,14 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(inputs.migrate("endpoint-realtek", ""), ("endpoint-realtek", ""))
         self.assertEqual([r.index for r in inputs.routes_for("endpoint-realtek", interface=BACKENDS[2])], [12])
         self.assertEqual([r.index for r in inputs.routes_for("", preferred=BACKENDS[2])], [12, 8, 7, 4])
+
+    def test_interfaces_depend_on_the_selected_device(self):
+        asio = Route(15, "Interfaz USB", "ASIO", 48000, 2, "usb-asio")
+        inputs = group_routes([WASAPI, MME, DIRECT, MAPPER, asio])
+        self.assertEqual(inputs.interfaces_for("endpoint-realtek"), set(BACKENDS[:3]))
+        self.assertEqual(inputs.interfaces_for("usb-asio"), {"ASIO"})
+        self.assertNotIn("ASIO", inputs.interfaces_for(""))
+        self.assertEqual(inputs.interfaces_for("missing"), set())
 
     def test_ambiguous_names_are_retained_as_separate_devices(self):
         second = replace(WASAPI, index=6, endpoint="other", legacy_key="other")
@@ -140,6 +149,39 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(converter.convert(raw), array("h", [900, 900]).tobytes())
 
 
+    def test_wasapi_uses_the_shared_mix_and_retries_a_format_without_words(self):
+        from struct import pack
+
+        from windows_audio import decode_mix_format
+
+        data = pack("<HHIIHHHHI", 0xfffe, 2, 48000, 384000, 8, 32, 22, 32, 3)
+        data += bytes.fromhex("0300000000001000800000aa00389b71")
+        self.assertEqual(decode_mix_format(data), (48000, 2, "float32"))
+        route = replace(WASAPI, mix=decode_mix_format(data))
+        self.assertEqual(next(iter(input_formats(route))), AudioFormat(48000, 2, dtype="float32"))
+        driver = FakeSoundDevice([(4, 48000, 2)], {4: 500})
+        self.enterContext(patch("audio_input.portaudio", return_value=nullcontext(driver)))
+        self.enterContext(patch("audio_input.sys", Mock(platform="fixture")))
+        rejected = set()
+        inputs = group_routes([route])
+        with capture_input(inputs, "endpoint-realtek", Event(), interface=BACKENDS[0]) as capture:
+            self.assertEqual(capture.format.dtype, "float32")
+            reject_recognition(capture, rejected)
+        self.assertNotIn(4, rejected)
+        with capture_input(inputs, "endpoint-realtek", Event(), rejected, interface=BACKENDS[0]) as capture:
+            self.assertEqual(capture.format.dtype, "int16")
+            self.assertGreater(capture.level, 0)
+
+    def test_disconnected_saved_interface_recovers_on_the_same_device(self):
+        driver = FakeSoundDevice([(7, 16000, 1)], {7: 500})
+        self.enterContext(patch("audio_input.portaudio", return_value=nullcontext(driver)))
+        self.enterContext(patch("audio_input.sys", Mock(platform="fixture")))
+        with capture_input(group_routes([WASAPI, MME]), "endpoint-realtek", Event(),
+                           interface="ASIO", recover_interface=True) as capture:
+            self.assertEqual(capture.route.index, 7)
+            self.assertIn("ASIO no está disponible", capture.notice)
+            self.assertTrue(capture.automatic)
+
     def test_192khz_format_comes_after_voice_rates_and_filters_aliases(self):
         import audioop
         from math import pi, sin
@@ -194,9 +236,11 @@ class NativeAudioTests(unittest.TestCase):
             root.update()
             self.assertEqual(float(dialog.level["value"]), 65)
             self.assertIn("48000 Hz", dialog.input_route["text"])
-            inputs = group_routes([WASAPI, MME])
+            inputs = group_routes([WASAPI, MME, DIRECT])
             dialog.show_catalog(inputs, [], "")
             dialog.microphone.set(inputs.devices[0].label)
+            dialog.update_interfaces()
+            self.assertNotIn("ASIO", dialog.interface["values"])
             dialog.interface.set("DirectSound")
             dialog.test_button.invoke()
             test.assert_called_once_with(WASAPI.endpoint, BACKENDS[2])

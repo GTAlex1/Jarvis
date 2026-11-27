@@ -1,6 +1,7 @@
 """Command execution shared by desktop frontends and future input sources."""
 from concurrent.futures import ThreadPoolExecutor
 
+from dialogue import SelectedCommand
 from jarvis import Desktop, execute
 
 
@@ -13,9 +14,16 @@ class Assistant:
     def submit(self, command):
         return self.worker.submit(self.execute, command)
 
-    def execute(self, command):
+    def submit_voice(self, command):
+        return self.worker.submit(self.execute, command, conversational=True)
+
+    def execute(self, command, conversational=False):
+        selection = None
+        if isinstance(command, SelectedCommand):
+            selection = command.option.target
+            command = command.command
         try:
-            return execute(self.desktop, command)
+            return execute(self.desktop, command, conversational, selection)
         except OSError as error:
             return f"No se pudo completar la orden: {error}"
 

@@ -233,6 +233,7 @@ class VoiceDialog:
         self.cancel_test = cancel_test
         self.meter = meter
         self.progress = progress
+        self.inputs = None
         self.meter_job = None
         window.bind("<Map>", self.mapped)
         window.bind("<Unmap>", self.unmapped)
@@ -240,32 +241,45 @@ class VoiceDialog:
         self.enabled = tk.BooleanVar(window, settings.enabled)
         self.volume = tk.IntVar(window, settings.volume)
         self.sensitivity = tk.IntVar(window, settings.sensitivity)
+        self.conversational = tk.BooleanVar(window, settings.conversational)
+        self.context_seconds = tk.StringVar(window, str(settings.context_seconds))
+        self.reply_seconds = tk.StringVar(window, str(settings.reply_seconds))
         box = tk.Checkbutton(
             window, text="Escucha permanente", variable=self.enabled, bg=BG, fg=TEXT,
             activebackground=BG, activeforeground=CYAN, selectcolor=PANEL, font=(FONT, 11, "bold"),
         )
         box.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
         self.microphone = self.combobox("Micrófono", 1)
+        self.microphone.bind("<<ComboboxSelected>>", lambda _event: self.update_interfaces())
         self.interface = self.combobox("Interfaz de captura", 2)
-        self.interface.configure(values=tuple(CAPTURE_INTERFACES))
+        self.interface.configure(values=("Automática",))
         self.set_interface(settings.interface)
         self.speaker = self.combobox("Voz de respuesta", 3)
         self.slider("Volumen", self.volume, 0, 100, 4)
         self.slider("Sensibilidad", self.sensitivity, 1, 5, 5)
 
-        self.label("Nivel del micrófono", 6)
+        tk.Checkbutton(
+            window, text="Modo conversacional", variable=self.conversational, bg=BG, fg=TEXT,
+            activebackground=BG, activeforeground=CYAN, selectcolor=PANEL, font=(FONT, 10),
+        ).grid(row=6, column=0, columnspan=2, sticky="w")
+        self.seconds("Contexto (segundos)", self.context_seconds, 5, 120, 7)
+        self.seconds("Espera de respuesta (segundos)", self.reply_seconds, 3, 18, 8)
+        self.detail = self.combobox("Detalle hablado", 9)
+        self.detail.configure(values=("Breve", "Normal", "Ampliado"))
+        self.detail.set(settings.speech_detail.capitalize())
+        self.label("Nivel del micrófono", 10)
         self.level = ttk.Progressbar(window, maximum=100, mode="determinate")
-        self.level.grid(row=6, column=1, sticky="ew", pady=4)
+        self.level.grid(row=10, column=1, sticky="ew", pady=4)
         self.input_route = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.input_route.grid(row=7, column=0, columnspan=2, sticky="w")
+        self.input_route.grid(row=11, column=0, columnspan=2, sticky="w")
         self.test_status = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.test_status.grid(row=8, column=0, columnspan=2, sticky="w")
+        self.test_status.grid(row=12, column=0, columnspan=2, sticky="w")
         self.transcription = tk.Label(window, bg=BG, fg=CYAN, wraplength=420, justify="left")
-        self.transcription.grid(row=9, column=0, columnspan=2, sticky="w")
+        self.transcription.grid(row=13, column=0, columnspan=2, sticky="w")
         self.notice = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.notice.grid(row=10, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self.notice.grid(row=14, column=0, columnspan=2, sticky="w", pady=(10, 4))
         controls = tk.Frame(window, bg=BG)
-        controls.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        controls.grid(row=15, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.reload = ttk.Button(controls, text="Actualizar lista", command=self.load)
         self.reload.pack(side="left")
         self.test_button = ttk.Button(controls, text="Probar micrófono", command=self.start_test)
@@ -329,6 +343,12 @@ class VoiceDialog:
             bg=BG, fg=CYAN, troughcolor=PANEL, highlightthickness=0, activebackground=EDGE,
         ).grid(row=row, column=1, sticky="ew")
 
+    def seconds(self, label, variable, first, last, row):
+        self.label(label, row)
+        ttk.Spinbox(self.window, from_=first, to=last, width=6, textvariable=variable).grid(
+            row=row, column=1, sticky="w", pady=3,
+        )
+
     @staticmethod
     def populate(box, automatic, entries, selected):
         options = {automatic: "", **dict(entries)}
@@ -341,6 +361,15 @@ class VoiceDialog:
     def set_interface(self, interface):
         self.interface.set(next(label for label, value in CAPTURE_INTERFACES.items() if value == interface))
 
+    def update_interfaces(self):
+        selection = self.microphones[self.microphone.get()]
+        available = self.inputs.interfaces_for(selection) if self.inputs else set()
+        options = tuple(label for label, api in CAPTURE_INTERFACES.items() if not api or api in available)
+        self.interface.configure(values=options)
+        if self.interface.get() not in options:
+            self.interface.set("Automática")
+            self.notice.configure(text="La interfaz anterior no está disponible para este micrófono.")
+
     def load(self):
         self.reload.configure(state="disabled")
         self.test_button.configure(state="disabled")
@@ -348,6 +377,8 @@ class VoiceDialog:
         self.refresh()
 
     def show_catalog(self, devices, voices, error):
+        self.inputs = devices
+        self.notice.configure(text=error)
         if devices is not None:
             selection, interface = devices.migrate(
                 self.microphones[self.microphone.get()], CAPTURE_INTERFACES[self.interface.get()],
@@ -361,7 +392,7 @@ class VoiceDialog:
             self.speaker, "Automática (prioriza español)", ((f"{name} ({lang})", name) for name, lang in voices),
             self.speakers[self.speaker.get()],
         )
-        self.notice.configure(text=error)
+        self.update_interfaces()
         self.reload.configure(state="normal")
         self.test_button.configure(state="normal")
 
@@ -371,6 +402,8 @@ class VoiceDialog:
                 enabled=self.enabled.get(), device=self.microphones[self.microphone.get()],
                 voice=self.speakers[self.speaker.get()], volume=self.volume.get(),
                 sensitivity=self.sensitivity.get(), interface=CAPTURE_INTERFACES[self.interface.get()],
+                conversational=self.conversational.get(), context_seconds=int(self.context_seconds.get()),
+                reply_seconds=int(self.reply_seconds.get()), speech_detail=self.detail.get().lower(),
             ))
         except (OSError, ValueError) as error:
             messagebox.showerror("JARVIS", str(error), parent=self.window)

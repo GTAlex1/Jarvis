@@ -8,6 +8,7 @@ import zlib
 from commands import parse
 from audio_input import AudioFormat, PcmConverter, input_devices
 from voice_audio import installed_voices, test_synthesis
+from speech_cancel import SpeechCancellation
 from voice_recognition import (
     CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, spanish_model,
 )
@@ -45,7 +46,36 @@ def test_audio(folder):
         report[name] = "correcto"
     high_rate_command(model, command)
     report["reconocimiento_192khz"] = "correcto"
+    dialogue_audio(model, command, fixture(folder, "stop"), silence)
+    report["continuación_e_interrupción"] = "correcto"
     return report
+
+
+def dialogue_audio(model, command, stop, silence):
+    frame_bytes = CHUNK_FRAMES * SAMPLE_BYTES
+    audio = silence[:10000] + command + silence * 2
+    exchange = Conversation(WakeDetector(3), lambda: SpanishRecognizer(model), lambda _: None)
+    exchange.listen_for_reply(0, 5)
+    for start in range(0, len(audio), frame_bytes):
+        transcript = exchange.feed(audio[start:start + frame_bytes], start / len(silence))
+        if transcript and transcript.understood and parse(transcript.text) == ("open", "spotify"):
+            break
+    else:
+        raise AssertionError("No se reconoció la orden de seguimiento sin activación.")
+
+    class RecordedCapture:
+        def __init__(self, pcm):
+            self.frames = iter(pcm[start:start + frame_bytes] for start in range(0, len(pcm), frame_bytes))
+
+        def read(self, timeout=0):
+            return next(self.frames, None)
+
+    for utterance, expected in ((command, False), (stop, True)):
+        audio = silence[:10000] + utterance + silence * 2
+        token = SpeechCancellation(Event(), Event(), RecordedCapture(audio), model)
+        did_stop = any(token.is_set() for _ in range(len(audio) // frame_bytes + 1))
+        if did_stop != expected or token.error:
+            raise AssertionError(f"Resultado inesperado del reconocimiento de interrupción: {did_stop}.")
 
 
 def high_rate_command(model, command):

@@ -50,10 +50,12 @@ SYSTEM_COMMANDS = {
     "siguiente cancion": "next_track", "anterior cancion": "previous_track",
     "captura de pantalla": "screenshot", "recorte de pantalla": "screenshot",
 }
+SPOKEN_NUMBERS = ("uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez")
+SPOKEN_SCREEN = re.compile(r" (?:pantalla|monitor) (" + "|".join(SPOKEN_NUMBERS) + r")$")
 LIST_COMMANDS = {
     "ventanas": "windows", "lista ventanas": "windows",
-    "aplicaciones": "apps", "programas": "apps",
-    "pantallas": "screens", "monitores": "screens",
+    "aplicaciones": "apps", "programas": "apps", "lista aplicaciones": "apps",
+    "pantallas": "screens", "monitores": "screens", "lista pantallas": "screens",
     "ayuda": "help", "comandos": "help", "salir": "exit",
 }
 
@@ -68,6 +70,8 @@ def parse(command):
         return (LIST_COMMANDS[value],)
     if value in SYSTEM_COMMANDS:
         return "system", SYSTEM_COMMANDS[value]
+    if match := SPOKEN_SCREEN.search(value):
+        value = value[:match.start(1)] + str(SPOKEN_NUMBERS.index(match[1]) + 1)
     screen = None
     if match := SCREEN.search(value):
         screen = 0 if match[1] == "principal" else int(match[1])

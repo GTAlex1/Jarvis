@@ -23,18 +23,24 @@ La animación se detiene al ocultar o minimizar el panel.
 
 1. Abre **Ajustes de voz** en el panel o en la bandeja. Elige el micrófono y activa **Escucha permanente**. El interruptor **Micrófono** de la bandeja debe estar marcado.
 2. Puedes cerrar el panel con la X. Di **«Jarvis, abre Spotify»** de corrido, o di **«Jarvis»**, haz una pausa y luego da la orden. Spotify debe aparecer en el menú Inicio para que JARVIS pueda abrirlo.
-3. JARVIS dispone de hasta **6 segundos** tras la activación para reconocer la orden. El panel muestra el estado de voz y el icono de la bandeja lo indica al pasar el ratón.
+3. JARVIS dispone de hasta **6 segundos** tras la activación inicial para reconocer la orden. El panel muestra el estado de voz y el icono de la bandeja lo indica al pasar el ratón.
 4. Después de ejecutar la orden, JARVIS responde con la voz elegida y vuelve a esperar. El **volumen 0** silencia las respuestas. Con **Automática**, prioriza las voces en español disponibles en el motor clásico de Windows.
 
 La detección y el reconocimiento funcionan en el equipo. El ejecutable incluye los modelos y puede usarlos sin conexión ni claves. JARVIS procesa el audio en memoria, descarta la entrada durante su propia respuesta y guarda las preferencias de voz en tu cuenta de Windows. El historial del panel muestra texto durante la sesión.
 
-### Probar el reconocimiento en 0.6.2
+### Conversar desde la bandeja
 
-En **Ajustes de voz**, elige **Predeterminado de Windows** o un micrófono físico. En **Interfaz de captura** puedes elegir **Automática**, **MME**, **DirectSound** o **WASAPI**. El micrófono aparece una vez aunque Windows lo exponga mediante varias interfaces. Con el dispositivo predeterminado y MME se puede usar el asignador de sonido de Windows. Con DirectSound se puede usar su controlador primario.
+Di **«Jarvis, ayuda»** y, después de que te pregunte, responde **«ventanas»**. También puedes pedir **«aplicaciones»** y decir **«continúa»** para escuchar el siguiente grupo. **«Repite»** vuelve a leer la última respuesta y **«dame más detalles»** ofrece la siguiente parte cuando está disponible. **«Sí»** continúa una respuesta por partes. **«No»**, **«cancela»** y **«para»** cierran la conversación.
 
-Pulsa **Probar micrófono** y di «abre Spotify». La prueba muestra por separado **Señal recibida**, **Voz detectada** y **Palabras reconocidas**, con transcripción en directo. Con **Automática**, si falla la prueba de reconocimiento, JARVIS puede pasar a otra ruta. Repite la frase cuando cambie la interfaz que muestra el medidor. La prueba dura unos cinco segundos por ruta y las palabras aparecen durante la sesión de prueba.
+Cuando hay varias aplicaciones o ventanas con el mismo nombre, JARVIS pregunta cuál quieres. Responde con el número o con un nombre específico. JARVIS conserva la conversación en memoria y puede pedir aclaraciones o hablar aunque el panel esté oculto.
 
-Cuando una ruta funciona en la prueba automática, JARVIS la prioriza durante esa sesión. Puedes guardar una interfaz concreta para próximos arranques. El registro `%LOCALAPPDATA%\JARVIS\voz.log` guarda detalles técnicos de la captura y el reconocimiento. La transcripción y el audio de la prueba se procesan en memoria.
+Por defecto, después de responder JARVIS te escucha durante **8 segundos** sin volver a decir «Jarvis» y conserva el contexto **25 segundos**. Pasado el primer plazo puedes usar «Jarvis, repite» mientras siga vigente el contexto. En **Ajustes de voz** puedes cambiar ambos plazos, elegir el detalle hablado o desactivar el modo conversacional. Para interrumpir mientras habla, di **«Jarvis, para»** o usa **Detener respuesta de voz** en la bandeja.
+
+### Probar el reconocimiento
+
+Elige un micrófono y una de las interfaces disponibles para ese dispositivo. **Automática** intenta MME y DirectSound antes que WASAPI cuando esas rutas están disponibles. También puede cambiar de ruta si la captura o el reconocimiento fallan. ASIO aparece cuando Windows lo expone para la entrada elegida.
+
+Pulsa **Probar micrófono** y di «abre Spotify». La prueba distingue señal, actividad de voz y palabras reconocidas, y muestra la transcripción en directo. Si cambia la ruta del medidor, repite la frase. El registro técnico se guarda en `%LOCALAPPDATA%\JARVIS\voz.log`. El audio y la transcripción de la prueba se procesan en memoria.
 
 ## Actualizaciones
 

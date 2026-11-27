@@ -83,17 +83,10 @@ def installed_voices(cancelled):
 
 
 def speak(text, settings, cancelled):
-    if settings.volume == 0 or cancelled.is_set():
+    if settings.volume == 0 or not text.strip() or cancelled.is_set():
         return
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        return
-    line, *other = lines
-    if other or len(line) > 210:
-        line = "La respuesta completa está en el historial de JARVIS."
-    sapi({"action": "speak", "text": line, "voice": settings.voice, "volume": settings.volume},
+    sapi({"action": "speak", "text": text.strip(), "voice": settings.voice, "volume": settings.volume},
          cancelled, timeout=20)
-
 
 
 def test_synthesis():

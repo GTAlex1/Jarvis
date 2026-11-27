@@ -1,8 +1,9 @@
 # Hoja de ruta de JARVIS
 
+**Implementado en 0.6.3**. Respuestas habladas por partes, contexto temporal, seguimiento, aclaraciones e interrupción desde la bandeja.
+
 | Versión | Funcionalidad pendiente |
 | --- | --- |
-| 0.6.3 | Respuestas habladas completas y contexto conversacional sin depender de la interfaz gráfica. |
 | 0.6.4 | Detección universal de aplicaciones y videojuegos, incluyendo Epic Games y Steam. |
 | 0.6.5 | Modo gaming y ejecución de comandos sin robar el foco. |
 | 0.7.0 | Rediseño visual inspirado en Apple Liquid Glass. |

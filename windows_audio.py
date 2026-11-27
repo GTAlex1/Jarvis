@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import ctypes as c
 from ctypes import wintypes as w
 from uuid import UUID
+from struct import unpack_from
 
 CLSID_ENUMERATOR = UUID("bcde0395-e52f-467c-8e3d-c4579291692e")
 IID_ENUMERATOR = UUID("a95664d2-9614-4f35-a746-de8db63617e6")
@@ -84,6 +85,40 @@ def wasapi_endpoint_ids(library, indices):
             # PortAudio owns this IMMDevice pointer.
             endpoints[index] = endpoint_id(device)
     return endpoints
+
+
+def decode_mix_format(data):
+    if len(data) < 16:
+        return None
+    tag, channels, rate, _, _, bits = unpack_from("<HHIIHH", data)
+    if tag == 0xfffe and len(data) >= 40:
+        tag = unpack_from("<I", data, 24)[0]
+    if not 8000 <= rate <= 384000 or not 1 <= channels <= 32:
+        return None
+    if tag == 3 and bits == 32:
+        return rate, channels, "float32"
+    if tag == 1 and bits in (16, 24, 32):
+        return rate, channels, "int16" if bits == 16 else "float32"
+    return None
+
+
+def wasapi_mix_formats(library, indices):
+    if not indices:
+        return {}
+    try:
+        library = c.CDLL(library)
+        query = getattr(library, "PaWasapi_GetDeviceMixFormat", None) or library.PaWasapi_GetDeviceDefaultFormat
+    except (AttributeError, OSError):
+        return {}
+    query.argtypes = [c.c_void_p, c.c_uint, c.c_int]
+    query.restype = c.c_int
+    formats = {}
+    for index in indices:
+        buf = c.create_string_buffer(64)
+        size = query(buf, c.sizeof(buf), index)
+        if size > 0 and (fmt := decode_mix_format(buf.raw[:size])):
+            formats[index] = fmt
+    return formats
 
 
 def mapper_names():

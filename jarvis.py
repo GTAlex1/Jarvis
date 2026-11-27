@@ -8,6 +8,7 @@ import subprocess
 import sys
 import unicodedata
 from commands import HELP, clean, parse, rectangle
+from dialogue import Clarification, TargetOption
 
 
 def normalize(value):
@@ -78,6 +79,12 @@ def half(bounds, side):
     if side == "izquierda":
         return x, y, middle - x, bottom - y
     return middle, y, right - middle, bottom - y
+
+
+class AmbiguousTarget(ValueError):
+    def __init__(self, written, kind, options):
+        super().__init__(written)
+        self.clarification = Clarification(written, tuple(options), kind)
 
 
 class MonitorInfo(c.Structure):
@@ -205,7 +212,7 @@ class Desktop:
         except (subprocess.SubprocessError, ValueError) as error:
             raise OSError("Windows no pudo consultar las aplicaciones del menú Inicio.") from error
 
-    def open_app(self, title):
+    def open_app(self, title, selection=None):
         builtins = {
             "configuracion": "ms-settings:", "ajustes": "ms-settings:",
             "configuracion de pantalla": "ms-settings:display",
@@ -230,10 +237,16 @@ class Desktop:
         matches = launch_matches(self.applications(), title)
         if not matches:
             return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
-        if len(matches) > 1:
+        if selection is not None:
+            if selection not in matches:
+                raise ValueError("La aplicación elegida ya no está disponible. Vuelve a pedir la orden.")
+            name, app_id = selection
+        elif len(matches) > 1:
             names = "\n".join(f"  {name}" for name, _ in matches)
-            return f"Encontré varias aplicaciones. Usa su nombre completo:\n{names}"
-        name, app_id = matches[0]
+            raise AmbiguousTarget(f"Encontré varias aplicaciones. Usa su nombre completo:\n{names}",
+                                  "aplicaciones", (TargetOption(item[0], item) for item in matches))
+        else:
+            name, app_id = matches[0]
         if title == normalize("Explorador") or normalize(name) in {"explorador de archivos", "file explorer"}:
             os.startfile(os.environ["SystemRoot"] + r"\explorer.exe")
         else:
@@ -254,17 +267,22 @@ class Desktop:
         lines.extend(f"No pude minimizar «{name}»." for name in failed)
         return "\n".join(lines)
 
-    def select_window(self, title):
+    def select_window(self, title, selection=None):
         matches = matching_windows(self.windows(), title)
+        if selection is not None:
+            if selection not in matches:
+                raise ValueError("La ventana elegida ha cambiado o se ha cerrado. Vuelve a pedir la orden.")
+            return selection
         if not matches:
             raise ValueError(f"No encontré una ventana de «{title}». Puedes usar «abre {title}».")
         if len(matches) > 1:
             names = "\n".join(f"  {name}" for _, name, _ in matches)
-            raise ValueError(f"Hay varias ventanas. Usa un título más específico:\n{names}")
+            raise AmbiguousTarget(f"Hay varias ventanas. Usa un título más específico:\n{names}",
+                                  "ventanas", (TargetOption(item[1], item) for item in matches))
         return matches[0]
 
-    def window_action(self, action, title):
-        handle, name, _ = self.select_window(title)
+    def window_action(self, action, title, selection=None):
+        handle, name, _ = self.select_window(title, selection) if selection else self.select_window(title)
         if action == "close":
             if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
                 raise c.WinError(c.get_last_error())
@@ -283,14 +301,14 @@ class Desktop:
             return f"Windows impidió poner «{name}» en primer plano. Selecciónala desde la barra de tareas."
         raise ValueError("Acción de ventana desconocida.")
 
-    def move(self, title, side, screen):
+    def move(self, title, side, screen, selection=None):
         position = {"izquierda": "left", "derecha": "right", "completa": "full"}.get(side, side)
         screens = self.screens()
         if screen in (None, 0):
             screen = next((number for number, (_, primary) in screens.items() if primary), None)
         if screen not in screens:
             return "No encontré esa pantalla. Escribe «pantallas» para ver las disponibles."
-        handle, name, _ = self.select_window(title)
+        handle, name, _ = self.select_window(title, selection) if selection else self.select_window(title)
         was_maximized = self.api.IsZoomed(handle)
         if was_maximized or self.api.IsIconic(handle):
             self.api.ShowWindow(handle, 1)  # Restore to normal size before positioning
@@ -373,11 +391,12 @@ def listen():
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def execute(desktop, command):
+def execute(desktop, command, conversational=False, selection=None):
     parsed = parse(command)
     if not parsed:
         return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
     action, *args = parsed
+    target = {"selection": selection} if selection is not None else {}
     try:
         if action == "help":
             return HELP
@@ -394,16 +413,18 @@ def execute(desktop, command):
         if action == "apps":
             return "\n".join(name for name, _ in desktop.applications()) or "No encontré aplicaciones en el menú Inicio."
         if action == "open":
-            return desktop.open_app(*args)
+            return desktop.open_app(*args, **target)
         if action == "minimize":
             return desktop.minimize(*args)
         if action == "place":
-            return desktop.move(*args)
+            return desktop.move(*args, **target)
         if action == "system":
             return desktop.system_action(*args)
         if action == "exit":
             return "Usa «Salir de JARVIS» en la bandeja o escribe «salir»."
-        return desktop.window_action(action, *args)
+        return desktop.window_action(action, *args, **target)
+    except AmbiguousTarget as error:
+        return error.clarification if conversational else str(error)
     except ValueError as error:
         return str(error)
 

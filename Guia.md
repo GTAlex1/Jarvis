@@ -36,6 +36,14 @@ El trabajador de voz conserva solo un tramo breve de audio y una cola acotada en
 
 Fuentes de los componentes. [PocketSphinx](https://pocketsphinx.readthedocs.io/en/stable/config_params.html) · [Modelos de Vosk](https://alphacephei.com/vosk/models) · [sounddevice](https://python-sounddevice.readthedocs.io/) · [System.Speech](https://learn.microsoft.com/dotnet/api/system.speech.synthesis.speechsynthesizer)
 
+## Conversación local
+
+`dialogue.py` conserva un contexto temporal con la última respuesta, páginas de información y opciones de aclaración. Recibe una orden y el resultado del ejecutor para producir una respuesta hablada. Una pantalla nunca es necesaria para continuar. El historial conserva el resultado escrito de escritorio por separado. Si añades una función, puedes devolver una aclaración con opciones explícitas o convertir su resultado en páginas habladas.
+
+La espera inicial sigue siendo de seis segundos. Después de una respuesta se abre una escucha de seguimiento durante el tiempo configurado. Al acabar esa escucha vuelve a requerirse la palabra de activación. El último tema o respuesta dura hasta agotar el contexto. Las aclaraciones con una acción pendiente se descartan cuando expira su espera. El seguimiento exige más confianza en la transcripción que una orden que empieza con la palabra de activación.
+
+Durante la síntesis el reconocedor de órdenes permanece excluido. Un reconocedor con una gramática independiente escucha únicamente «Jarvis, para», «Jarvis, cancela» o «Jarvis, detente» con confianza alta, y su única acción es cancelar la salida. Los segmentos que pronuncian «Jarvis» desactivan temporalmente esa detección. **Detener respuesta de voz** en la bandeja puede cancelar cualquier segmento. La captura descarta el audio anterior y espera un margen de 450 milisegundos antes de volver a reconocer órdenes. La respuesta acústica de cada sala se comprueba físicamente.
+
 ## Diagnóstico de captura y reconocimiento
 
 La 0.6.1 agrupaba las interfaces de cada dispositivo y escogía WASAPI si abría el flujo a su frecuencia anunciada. Un nivel RMS positivo bastaba para aceptar la ruta. Para el caso comunicado, el formato resultante fue 192 kHz mono int16. El conversor anterior reducía frecuencias sin un filtro antialias. En una reproducción sintética de 192 kHz, un tono de 31 kHz aparecía a 1 kHz tras la conversión anterior. Esto demuestra un defecto de la ruta y una limitación del diagnóstico de señal. La prueba física debe confirmar qué entregaba el controlador en ese equipo.
@@ -44,13 +52,19 @@ La 0.6.2 mantiene la agrupación y restaura la selección independiente de la in
 
 La prueba **Probar micrófono** mide señal PCM, usa detección local de actividad de voz y presenta hipótesis y palabras confirmadas del reconocedor español. No ejecuta órdenes. En modo automático prueba otra ruta si la actual falla al capturar o no reconoce voz y palabras durante la prueba. Durante la escucha habitual, dos activaciones seguidas sin orden reconocida pueden cambiar de interfaz. La palabra de activación sigue siendo necesaria para ejecutar comandos. El registro técnico está en `%LOCALAPPDATA%\JARVIS\voz.log` y rota a 256 KiB.
 
+### WASAPI y ASIO en 0.6.3
+
+La prueba de 0.6.2 descartaba todo el dispositivo WASAPI si el primer formato con señal no producía palabras. Se reprodujo con un controlador simulado que aceptaba varios formatos. Ahora se consulta primero el formato compartido de WASAPI, se distinguen canales y tipo de muestra y se reintentan hasta tres formatos con señal antes de agotar esa ruta. Si Windows no proporciona el formato compartido se mantienen las pruebas de frecuencia, canales y formato. MME y DirectSound siguen disponibles en Automática. La causa concreta que impide el reconocimiento con determinados controladores Realtek queda pendiente de probar con el hardware.
+
+La interfaz que muestra el panel depende de las rutas que el controlador expone para el micrófono seleccionado. Una interfaz detectada puede entregar audio insuficiente para el reconocimiento. Si desaparece la que estaba guardada, se avisa y se usa Automática con el mismo micrófono. Consulta la [referencia de formatos de PortAudio](https://files.portaudio.com/docs/v19-doxydocs-dev/pa__win__wasapi_8h.html).
+
 Los requisitos de empaquetado, actualización y licencias están en [AGENTS.md](AGENTS.md). La [hoja de ruta](ROADMAP.md) reúne las funciones pendientes.
 
 ## Pruebas automatizadas
 
-- `python -m unittest -v test_commands test_resident test_voice test_audio_input` comprueba comandos, bandeja, preferencias, reintento ante desconexión simulada, tratamiento de baja confianza y exclusión del audio durante la respuesta. Con los modelos y dependencias instalados, también procesa audio sintético. Las pruebas de captura simulan formatos rechazados, 48 kHz estéreo, flujo silencioso, alternativas entre APIs y un cambio del predeterminado. También comprueba filtrado y decimación de 192 kHz, continuidad a 44,1 kHz, migración de interfaces, transcripción en directo y cambio de ruta ante fallos de reconocimiento. En Windows se comprueban las consultas nativas de endpoint y asignador.
-- El diagnóstico del ejecutable abre las DLL y usa los modelos empaquetados para reconocer «Jarvis, abre Spotify» de corrido y con pausa. También comprueba una orden sin activación, el tiempo de espera, la enumeración de dispositivos y la síntesis en memoria, y reconoce una orden sintética capturada a 192 kHz con un tono fuera de banda añadido. El diagnóstico usa audio sintético y no acciona Spotify.
-- `python -m unittest -v test_update_windows` comprueba el reinicio del ejecutable y la recuperación ante un arranque fallido. Requiere `dist/JARVIS.exe`. En CI también sustituye el ejecutable publicado de 0.4.1 usando el mecanismo de esa versión y comprueba el arranque de 0.6.2.
+- `python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue` comprueba comandos, bandeja, preferencias, reintento ante desconexión simulada, tratamiento de baja confianza y exclusión del audio durante la respuesta. Con los modelos y dependencias instalados, también procesa audio sintético. Las pruebas de captura simulan formatos rechazados, 48 kHz estéreo, flujo silencioso, alternativas entre APIs y un cambio del predeterminado. También comprueba filtrado y decimación de 192 kHz, continuidad a 44,1 kHz, migración de interfaces, transcripción en directo y cambio de ruta ante fallos de reconocimiento. En Windows se comprueban las consultas nativas de endpoint y asignador. Las pruebas de conversación cubren la lectura por partes, el seguimiento, la expiración, la repetición, la cancelación y las aclaraciones sin panel. Los formatos alternativos de WASAPI y la pérdida de una interfaz guardada se prueban con controladores simulados.
+- El diagnóstico del ejecutable abre las DLL y usa los modelos empaquetados para reconocer «Jarvis, abre Spotify» de corrido y con pausa. También comprueba una orden sin activación, el tiempo de espera, la enumeración de dispositivos y la síntesis en memoria, y reconoce una orden sintética capturada a 192 kHz con un tono fuera de banda añadido. El diagnóstico también verifica una orden sintética de seguimiento sin palabra de activación y que la gramática de síntesis admite «Jarvis, para» e ignora una orden normal. El diagnóstico usa audio sintético y no acciona Spotify.
+- `python -m unittest -v test_update_windows` comprueba el reinicio del ejecutable y la recuperación ante un arranque fallido. Requiere `dist/JARVIS.exe`. En CI también sustituye el ejecutable publicado de 0.4.1 usando el mecanismo de esa versión y comprueba el arranque de 0.6.3.
 
 Desde un checkout del proyecto, puedes ejecutar el mismo diagnóstico del binario:
 
@@ -65,7 +79,9 @@ Get-Content diagnostico-voz.json -Encoding UTF8
 | --- | --- |
 | Selecciona tu micrófono, activa la escucha permanente y cierra el panel con la X. Di «Jarvis, abre Spotify» de corrido. | Spotify se abre y JARVIS responde con el panel oculto. |
 | Di «Jarvis», espera un segundo y di «abre la calculadora». Repite dejando pasar más de seis segundos. | La primera orden se ejecuta. La segunda necesita volver a decir «Jarvis». |
-| Con los altavoces activos, pide «Jarvis, ayuda» y después prueba tu volumen de respuesta habitual. | JARVIS habla una vez y vuelve a espera sin activarse por su propia voz. |
+| Con el panel oculto, pide «Jarvis, ayuda», di «ventanas» y luego «sí», «repite» y «no». | JARVIS da ayuda hablada, conserva el tema y termina la conversación. |
+| Con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «la segunda» cuando enumere las opciones. | Elige la ventana anunciada y envía la solicitud normal de cierre. |
+| Con tus altavoces activos, interrumpe un tramo de una respuesta larga diciendo «Jarvis, para». Repite con el control de la bandeja. | La respuesta se corta y el altavoz no provoca órdenes de escritorio por realimentación. |
 | Con el micrófono que usas normalmente, selecciona MME y luego DirectSound. En cada prueba di «abre Spotify». Repite con WASAPI y Automática. | Distingue señal, actividad de voz y palabras reconocidas. Compara la transcripción y anota interfaz y frecuencia. |
 | Con la ruta que transcriba bien, guarda los ajustes y prueba «Jarvis, abre Spotify» con el panel oculto y tus demás aplicaciones de audio abiertas. | La orden se ejecuta desde la captura física habitual. |
 | Con **Predeterminado de Windows** activo, cambia la entrada en Configuración de Windows con JARVIS escuchando. | El medidor y las siguientes órdenes pasan al nuevo dispositivo. |

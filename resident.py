@@ -10,6 +10,7 @@ from tkinter import messagebox
 
 from assistant import Assistant
 from commands import parse
+from dialogue import Clarification, SelectedCommand
 from preferences import (microphone_enabled, save_voice_settings, set_microphone,
                          set_startup, starts_with_windows, voice_settings)
 from updater import VERSION, acknowledge_startup, install_update, latest_update
@@ -90,6 +91,7 @@ class Resident:
             ("Iniciar con Windows", self.autostart, self.toggle_startup),
             ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
             ("Ajustes de voz…", False, self.open_voice_settings),
+            ("Detener respuesta de voz", False, self.voice.stop_speech),
             None,
             ("Salir de JARVIS", False, self.quit),
         )
@@ -200,17 +202,22 @@ class Resident:
             return
         if not reply.set_running_or_notify_cancel():
             return
-        if self.is_exit_command(command):
-            reply.set_result("")
+        if isinstance(command, str) and parse(command) == ("exit",):
+            if self.installing:
+                reply.set_result("La actualización cerrará JARVIS cuando termine la descarga.")
+            else:
+                self.quit()
+                reply.set_result("")
             return
-        self.record_voice(f"VOZ · {command}", "you")
-        future = self.assistant.submit(command)
+        title = command.option.label if isinstance(command, SelectedCommand) else command
+        self.record_voice(f"VOZ · {title}", "you")
+        future = self.assistant.submit_voice(command)
         future.add_done_callback(lambda completed: self.defer(self.finish_voice, completed, reply))
 
     def finish_voice(self, completed, reply):
-        text = self.command_result(completed)
-        self.record_voice(text, "reply")
-        reply.set_result(text)
+        result = self.command_result(completed)
+        self.record_voice(result.written if isinstance(result, Clarification) else result, "reply")
+        reply.set_result(result)
 
     def record_voice(self, text, tag):
         if self.panel is None:

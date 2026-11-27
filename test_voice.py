@@ -36,8 +36,8 @@ class VoiceServiceTest(unittest.TestCase):
         reply.set_result("Abrí Spotify.")
         on_state = Mock()
         service = VoiceService(Mock(return_value=reply), on_state, Mock())
-        settings = VoiceSettings(enabled=True)
-        capture = Mock(level=0, label="Micrófono simulado")
+        settings = VoiceSettings(enabled=True, conversational=False)
+        capture = Mock(level=0, label="Micrófono simulado", notice="")
         detector = Mock()
         detector.feed.return_value = b"tail"
         recognizer = Mock()
@@ -74,7 +74,10 @@ class VoiceServiceTest(unittest.TestCase):
         service.on_state.assert_called_once_with("muted", "")
         with patch("voice_service.speak") as speak:
             service.changed.clear()
-            service.respond(Transcript("cierra Spotify", 0.31), VoiceSettings(enabled=True))
+            from dialogue import Dialogue
+            settings = VoiceSettings(enabled=True)
+            turn = service.interpret(Transcript("cierra Spotify", 0.31), Dialogue(), settings, 0)
+            service.play(turn.speech, settings)
         service.submit.assert_not_called()
         speak.assert_called_once()
 
@@ -88,7 +91,7 @@ class VoiceServiceTest(unittest.TestCase):
                 waiting.set()
 
         service = VoiceService(Mock(), state_change, Mock())
-        capture = Mock(level=0, label="Micrófono simulado", available_routes=())
+        capture = Mock(level=0, label="Micrófono simulado", available_routes=(), automatic=False, notice="")
         def read():
             service.changed.wait(0.02)
             return None
@@ -142,7 +145,7 @@ class VoiceServiceTest(unittest.TestCase):
 
     def test_two_unrecognized_activations_trigger_automatic_fallback(self):
         service = VoiceService(Mock(), Mock(), Mock())
-        exchange = Mock(active=None)
+        exchange = Mock(active=None, following=False)
         iterations = iter((object(), None, object(), None))
 
         def receive(*_):
@@ -171,6 +174,7 @@ class SyntheticAudioTest(unittest.TestCase):
 
         report = test_audio(Path(__file__).with_name("tests") / "voice")
         self.assertEqual(report["reconocimiento_192khz"], "correcto")
+        self.assertEqual(report["continuación_e_interrupción"], "correcto")
 
 
 @unittest.skipUnless(sys.platform == "win32", "Requiere el registro de Windows")
@@ -184,7 +188,8 @@ class WindowsVoicePreferencesTest(unittest.TestCase):
         with patch("preferences.SETTINGS_KEY", path):
             try:
                 self.assertEqual(voice_settings(), VoiceSettings())
-                custom = VoiceSettings(True, "Micrófono USB", "Microsoft Helena", 45, 4, "MME")
+                custom = VoiceSettings(True, "Micrófono USB", "Microsoft Helena", 45, 4, "MME",
+                                       False, 45, 12, "ampliado")
                 save_voice_settings(custom)
                 self.assertEqual(voice_settings(), custom)
             finally:
