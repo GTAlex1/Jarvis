@@ -270,7 +270,7 @@ class Desktop:
                 raise c.WinError(c.get_last_error())
             return f"Solicité cerrar «{name}». Revisa si la aplicación pide guardar cambios."
         if action == "restore":
-            self.api.ShowWindow(handle, 9)
+            self.api.ShowWindow(handle, 1)  # SW_SHOWNORMAL, also for a previously maximized window
             if self.api.IsIconic(handle) or self.api.IsZoomed(handle):
                 return f"«{name}» no pudo restaurarse."
             return f"Restauré «{name}»."
@@ -293,7 +293,7 @@ class Desktop:
         handle, name, _ = self.select_window(title)
         was_maximized = self.api.IsZoomed(handle)
         if was_maximized or self.api.IsIconic(handle):
-            self.api.ShowWindow(handle, 9)
+            self.api.ShowWindow(handle, 1)  # Restore to normal size before positioning
         old = w.RECT()
         if not self.api.GetWindowRect(handle, c.byref(old)):
             raise c.WinError(c.get_last_error())
