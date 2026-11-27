@@ -402,7 +402,7 @@ def execute(desktop, command):
         if action == "system":
             return desktop.system_action(*args)
         if action == "exit":
-            return "Cierra JARVIS desde su ventana o escribe «salir» en la consola."
+            return "Usa «Salir de JARVIS» en la bandeja o escribe «salir»."
         return desktop.window_action(action, *args)
     except ValueError as error:
         return str(error)
@@ -412,12 +412,30 @@ def main():
     if sys.platform != "win32":
         print("JARVIS necesita Windows 10 o 11 para controlar el escritorio.")
         return 1
-    desktop = Desktop()
+    from assistant import Assistant
+    from preferences import microphone_enabled
+    from windows_tray import single_instance
+
+    with single_instance() as first:
+        if not first:
+            print("JARVIS ya está abierto. Puedes usar su panel o salir desde la bandeja.")
+            return 1
+        assistant = Assistant()
+        try:
+            return console(assistant, microphone_enabled)
+        finally:
+            assistant.close()
+
+
+def console(assistant, microphone_enabled):
     print("JARVIS · Pulsa Intro con la línea vacía para dictar.\n" + HELP)
     while True:
         try:
             command = input("\nTú > ").strip()
             if not command:
+                if not microphone_enabled():
+                    print("El micrófono de JARVIS está desactivado. Puedes escribir la orden.")
+                    continue
                 print("Escuchando…")
                 command = listen()
                 if not command:
@@ -426,10 +444,9 @@ def main():
                 print(f"Te entendí: {command}")
                 if input("¿Ejecutar? [s/N] ").strip().lower() != "s":
                     continue
-            key = normalize(command)
-            if key == "salir":
+            if parse(command) == ("exit",):
                 return 0
-            print(execute(desktop, command))
+            print(assistant.execute(command))
         except (EOFError, KeyboardInterrupt):
             return 0
         except (OSError, subprocess.TimeoutExpired) as error:

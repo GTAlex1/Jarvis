@@ -5,12 +5,22 @@ Asistente gráfico que organiza ventanas entre monitores con órdenes en españo
 ## Descargar y abrir
 
 1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases/latest).
-2. Abre el ejecutable desde una carpeta en la que puedas guardar archivos.
+2. Guarda y abre el ejecutable desde una carpeta de tu usuario. Usa una ubicación fija si activas el inicio automático.
 3. Con VS Code abierto, escribe `VSCode izquierda` y pulsa **Intro**.
+
+## Bandeja del sistema
+
+Desde la versión 0.5.0, la X oculta el panel y JARVIS sigue abierto en el área de notificación de Windows. Si no ves el icono, búscalo bajo la flecha junto al reloj. Abre el panel desde el icono o vuelve a ejecutar `JARVIS.exe` para recuperar la misma instancia.
+
+- **Micrófono** habilita o deshabilita el dictado manual de JARVIS y guarda tu preferencia. El panel admite comandos escritos. El modo residente no abre el micrófono ni detecta «Jarvis» por voz.
+- **Iniciar con Windows** está desactivado por defecto. Al activarlo, JARVIS se abre en la bandeja cuando inicias sesión con tu cuenta, sin pedir permisos de administrador. Si cambias el ejecutable de carpeta, vuelve a activar la opción desde la nueva ubicación. También puedes gestionarla desde **Configuración → Aplicaciones → Inicio** de Windows.
+- **Salir de JARVIS** cierra todo el programa. También puedes escribir `salir` en el panel.
+
+La animación se detiene al ocultar o minimizar el panel.
 
 ## Actualizaciones
 
-JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0. Desde 0.4.1 espera a que Windows libere el ejecutable y confirma que la interfaz nueva está lista antes de borrar la copia de recuperación. Si falla, guarda el paso y el error en `%LOCALAPPDATA%/JARVIS/actualizacion.log`.
+JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0. Para aplicar la actualización, JARVIS sale por completo, espera a que Windows libere el ejecutable y se vuelve a abrir. El actualizador conserva la copia anterior hasta que el nuevo arranque se confirma. Si falla, guarda el paso y el error en `%LOCALAPPDATA%/JARVIS/actualizacion.log`.
 
 Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub Actions compila y prueba la aplicación en Windows antes de publicar el ejecutable.
 
@@ -52,6 +62,6 @@ Abrir aplicaciones utiliza las entradas del menú Inicio. El botón **Aplicacion
 
 En Windows 10 u 11, instala [Python 3.10 o posterior](https://www.python.org/downloads/windows/) con Tcl/Tk. Ejecuta `python jarvis_gui.py` o haz doble clic en `Abrir-Jarvis.cmd`. Si alguno de los comandos `py` o `python` falta, el lanzador prueba el otro.
 
-Para dictar, abre la consola con `python jarvis.py`, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
+Para dictar, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. Con **Micrófono** habilitado, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
 
 Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).

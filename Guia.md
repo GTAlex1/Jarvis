@@ -2,7 +2,16 @@
 
 ## Ejecutable de Windows
 
-GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba que `JARVIS.exe` abre la ventana. El resultado se adjunta como `JARVIS-Windows-x64` a la ejecución. Puedes abrir la [última compilación](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml) desde el repositorio.
+GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el arranque, el cierre a la bandeja, la instancia única y la sustitución y recuperación del ejecutable. El resultado se adjunta como `JARVIS-Windows-x64` a la ejecución. Puedes abrir la [última compilación](https://github.com/GTAlex1/Jarvis/actions/workflows/windows.yml) desde el repositorio.
+
+## Ciclo de vida del asistente
+
+- `assistant.py` ofrece la ejecución de comandos en serie. Un futuro origen de entrada puede enviar texto mediante `Assistant.submit()` y recibir el resultado sin depender del panel.
+- `resident.py` coordina la sesión de escritorio, las preferencias y el actualizador. El panel de `jarvis_gui.py` se crea al abrirlo por primera vez.
+- `windows_tray.py` registra el icono con Win32. Un mutex por sesión de Windows limita JARVIS a una instancia. Una segunda apertura manual solo pide mostrar el panel existente. La bandeja recupera el icono al reiniciarse Explorer.
+- `preferences.py` guarda la preferencia del micrófono y administra el inicio de sesión en el registro del usuario. `--background` inicia JARVIS en la bandeja. Para probarlo desde el código usa `python jarvis_gui.py --background`.
+
+Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel recibe un aviso cuando hay resultados y suspende la animación al ocultarse. La comprobación de voz permanente queda pendiente. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
 
 ## Ventanas y pantallas
 
@@ -25,12 +34,12 @@ Si el listado carece de un motor en español o el dispositivo de entrada falla, 
 
 ## Añadir un comando
 
-1. Añade la interpretación de la frase en `execute()`, que utilizan la consola y la interfaz gráfica.
+1. Añade la frase al analizador de `commands.py` y conecta la acción en `execute()` de `jarvis.py`.
 2. Separa la interpretación del texto de la acción de Windows, como hacen `parse_move()` y `Desktop.move()`.
 3. Incluye un ejemplo en `HELP` y documenta el comando en el README.
 4. Comprueba la frase válida, una variante y una entrada inválida. Para cambios en las ventanas, comprueba también una ventana maximizada y un monitor secundario.
 
-Puedes comprobar que el código compila con `python -m py_compile jarvis.py jarvis_gui.py`.
+Puedes ejecutar las pruebas con `python -m unittest -v test_commands test_resident`. En Windows, con Explorer activo, se prueba el icono y se verifica que el panel vuelva a abrirse desde la instancia existente. La prueba de actualización `python -m unittest -v test_update_windows` requiere el ejecutable `dist/JARVIS.exe`.
 
 ## Comandos desde la versión 0.4.0
 

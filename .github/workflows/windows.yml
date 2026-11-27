@@ -4,12 +4,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/windows.yml
-      - jarvis.py
-      - jarvis_gui.py
-      - updater.py
-      - commands.py
-      - test_commands.py
-      - test_update_windows.py
+      - '*.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,9 +18,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m py_compile jarvis.py jarvis_gui.py updater.py
-      - name: Prueba comandos y ventanas reales
-        run: python -m unittest -v test_commands
+      - run: python -m compileall -q -x "/\.git/" .
+      - name: Prueba comandos, ventanas reales y bandeja
+        run: python -m unittest -v test_commands test_resident
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9')"
       - run: python -m pip install pyinstaller==6.16.0

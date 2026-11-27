@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
@@ -93,6 +93,22 @@ try {
 }
 """
 
+
+
+def acknowledge_startup():
+    receipt = os.environ.pop("JARVIS_UPDATE_RECEIPT", None)
+    if not receipt:
+        return
+    temp = None
+    try:
+        path = Path(receipt)
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, mode="w", encoding="utf-8") as output:
+            temp = Path(output.name)
+            output.write(VERSION)
+        temp.replace(path)
+    except OSError:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def version_tuple(tag):
