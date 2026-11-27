@@ -1,4 +1,6 @@
 import math
+import os
+from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 import sys
@@ -228,6 +230,14 @@ def main():
     poll_responses()
     entry.focus_set()
     animate()
+    receipt = os.environ.pop("JARVIS_UPDATE_RECEIPT", None)
+    if receipt:
+        def acknowledge_startup():
+            try:
+                Path(receipt).write_text(VERSION, encoding="utf-8")
+            except OSError:
+                pass
+        root.after(300, acknowledge_startup)
     root.mainloop()
     return 0
 

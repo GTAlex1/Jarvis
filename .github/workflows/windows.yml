@@ -9,6 +9,7 @@ on:
       - updater.py
       - commands.py
       - test_commands.py
+      - test_update_windows.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,6 +44,8 @@ jobs:
           } finally {
             Get-Process JARVIS -ErrorAction SilentlyContinue | Stop-Process -Force
           }
+      - name: Prueba sustitución, reinicio y recuperación del ejecutable
+        run: python -m unittest -v test_update_windows
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows-x64

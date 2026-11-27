@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
@@ -22,34 +22,76 @@ $ErrorActionPreference = 'Stop'
 $target = $env:JARVIS_UPDATE_TARGET
 $staged = $env:JARVIS_UPDATE_STAGED
 $backup = $staged + '.backup'
+$receipt = $staged + '.ready'
+$logDir = Join-Path $env:LOCALAPPDATA 'JARVIS'
+$log = Join-Path $logDir 'actualizacion.log'
+$nl = [Environment]::NewLine
 $replaced = $false
+$newApp = $null
+$step = 'Preparar la actualización'
 try {
-    Wait-Process -Id ([int]$env:JARVIS_UPDATE_PID) -Timeout 30 -ErrorAction SilentlyContinue
-    for ($i = 0; $i -lt 50; $i++) {
+    [IO.Directory]::CreateDirectory($logDir) | Out-Null
+    $step = 'Esperar al cierre de JARVIS'
+    $deadline = (Get-Date).AddSeconds(60)
+    while (Get-Process -Id ([int]$env:JARVIS_UPDATE_PID) -ErrorAction SilentlyContinue) {
+        if ((Get-Date) -gt $deadline) { throw 'JARVIS sigue abierto después de 60 segundos.' }
+        Start-Sleep -Milliseconds 200
+    }
+    $step = 'Sustituir el ejecutable'
+    # PyInstaller's parent can retain the executable after its Python child exits.
+    $deadline = (Get-Date).AddSeconds(60)
+    while (-not $replaced) {
         try {
             [IO.File]::Replace($staged, $target, $backup)
             $replaced = $true
-            break
-        } catch [IO.IOException] {
-            if ($i -eq 49) { throw }
-            Start-Sleep -Milliseconds 200
+        } catch {
+            if ((Get-Date) -gt $deadline) { throw }
+            Start-Sleep -Milliseconds 300
         }
     }
+    $step = 'Abrir la nueva versión'
     $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
-    Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target) -ErrorAction Stop
-    Remove-Item -LiteralPath $backup -ErrorAction SilentlyContinue
-} catch {
-    if ($replaced) {
-        try { [IO.File]::Replace($backup, $target, $null) } catch {}
+    $env:JARVIS_UPDATE_RECEIPT = $receipt
+    $newApp = Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target) -PassThru -ErrorAction Stop
+    $step = 'Comprobar que aparece la interfaz'
+    $deadline = (Get-Date).AddSeconds(40)
+    while (-not (Test-Path -LiteralPath $receipt)) {
+        if ($newApp.HasExited) { throw "El ejecutable se cerró con código $($newApp.ExitCode)." }
+        if ((Get-Date) -gt $deadline) { throw 'La nueva versión sigue ejecutándose, pero no confirmó que la interfaz estuviera lista.' }
+        Start-Sleep -Milliseconds 200
     }
-    Remove-Item -LiteralPath $staged -ErrorAction SilentlyContinue
+    $version = [IO.File]::ReadAllText($receipt)
+    [IO.File]::WriteAllText($log, "Actualización correcta a $version$nl$target")
+    Remove-Item -LiteralPath $backup, $receipt -ErrorAction SilentlyContinue
+} catch {
+    $detail = $_.Exception.ToString()
+    $restored = $false
+    if ($replaced -and (($null -eq $newApp) -or $newApp.HasExited)) {
+        try {
+            [IO.File]::Replace($backup, $target, $null)
+            $restored = $true
+        } catch { $detail += $nl + 'Restauración: ' + $_.Exception.ToString() }
+    }
+    Remove-Item -LiteralPath $staged, $receipt -ErrorAction SilentlyContinue
+    $message = "Falló el paso: $step$nl$detail$($nl)Ejecutable: $target"
+    try {
+        [IO.Directory]::CreateDirectory($logDir) | Out-Null
+        [IO.File]::WriteAllText($log, $message)
+    } catch {}
+    if ($env:JARVIS_UPDATE_TEST -eq '1') {
+        [Console]::Error.WriteLine($message)
+        exit 1
+    }
     Add-Type -AssemblyName PresentationFramework
+    $recovery = if ($restored) { 'Se recuperó la versión anterior.' } else { 'Vuelve a abrir JARVIS cuando termine este proceso.' }
     [System.Windows.MessageBox]::Show(
-        "No se pudo aplicar la actualización. Vuelve a abrir JARVIS o descarga la versión desde GitHub Releases.",
+        "No se completó la actualización.$nl$step$nl$recovery$($nl)Detalles guardados en $log",
         "JARVIS"
     ) | Out-Null
+    exit 1
 }
 """
+
 
 
 def version_tuple(tag):
@@ -101,11 +143,16 @@ def install_update(update):
         env = dict(os.environ, JARVIS_UPDATE_TARGET=str(target), JARVIS_UPDATE_STAGED=str(staged),
                    JARVIS_UPDATE_PID=str(os.getpid()))
         powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-        subprocess.Popen(
+        helper = subprocess.Popen(
             [str(powershell), "-NoProfile", "-STA", "-EncodedCommand",
              base64.b64encode(INSTALL.encode("utf-16le")).decode("ascii")],
             env=env, creationflags=subprocess.CREATE_NO_WINDOW,
         )
+        try:
+            helper.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            return
+        raise OSError("Windows cerró el actualizador antes de que pudiera instalar la actualización.")
     except (OSError, ValueError):
         if staged is not None:
             staged.unlink(missing_ok=True)
