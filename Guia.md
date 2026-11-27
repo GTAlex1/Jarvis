@@ -11,7 +11,7 @@ GitHub Actions compila `jarvis_gui.py` con PyInstaller y comprueba en Windows el
 - `windows_tray.py` registra el icono con Win32. Un mutex por sesión de Windows limita JARVIS a una instancia. Una segunda apertura manual solo pide mostrar el panel existente. La bandeja recupera el icono al reiniciarse Explorer.
 - `preferences.py` guarda la preferencia del micrófono y administra el inicio de sesión en el registro del usuario. `--background` inicia JARVIS en la bandeja. Para probarlo desde el código usa `python jarvis_gui.py --background`.
 
-Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel procesa los eventos de la bandeja y los resultados mediante una cola y suspende la animación al ocultarse. El dictado manual de consola conserva su confirmación antes de ejecutar una orden.
+Los comandos y la consulta de actualizaciones se completan en segundo plano. El panel procesa los eventos de la bandeja y los resultados mediante una cola y suspende la animación al ocultarse. La consola recibe órdenes por teclado. La captura de voz de escritorio pasa por el servicio de la bandeja y su verificador.
 
 ## Ventanas y pantallas
 
@@ -30,7 +30,7 @@ Los comandos y la consulta de actualizaciones se completan en segundo plano. El 
 | sounddevice 0.5.6 y PortAudio | Enumeran rutas y capturan en un formato aceptado por WASAPI, MME o DirectSound. | DLL x64. `RawInputStream` usa buffers de bytes. |
 | System.Speech | Enumera y usa las voces clásicas instaladas de Windows mediante su PowerShell integrado. | Viene de Windows. JARVIS le pasa texto y volumen por la entrada estándar. |
 
-Se eligió un detector pequeño para la espera y un transcriptor separado para la orden. El reconocimiento nativo de System.Speech se conserva en la consola y depende del motor español instalado. El ejecutable integra un transcriptor español para la escucha permanente. Los motores de voz pueden funcionar sin servicios externos.
+Se eligió un detector pequeño para la espera y un transcriptor separado para la orden. System.Speech se utiliza para la síntesis. La verificación del hablante usa el modelo x-vector de Vosk. El ejecutable integra un transcriptor español para la escucha permanente. Los motores de voz pueden funcionar sin servicios externos.
 
 El trabajador de voz conserva solo un tramo breve de audio y una cola acotada en memoria. Al detectar la palabra de activación, entrega al transcriptor el audio que sigue al final de la palabra y abre una ventana de seis segundos. Envía el texto al mismo ejecutor de comandos del panel. Descarta la captura durante la respuesta y durante el margen posterior de 450 ms, y reinicia el detector antes de volver a esperar. Si un flujo se interrumpe, intenta otra ruta del dispositivo. Cuando se agotan las opciones, actualiza la lista y vuelve a intentarlo cada tres segundos.
 
@@ -60,11 +60,37 @@ La interfaz que muestra el panel depende de las rutas que el controlador expone 
 
 Los requisitos de empaquetado, actualización y licencias están en [AGENTS.md](AGENTS.md). La [hoja de ruta](ROADMAP.md) reúne las funciones pendientes.
 
+## Captura en llamadas
+
+En 0.6.3, Automática podía recurrir a ASIO y WASAPI usaba bloques de captura de tamaño fijo. Se reprodujo esa selección en pruebas con controladores simulados. En 0.6.4, WASAPI solicita modo compartido explícito y deja el tamaño de búfer al controlador. Si el formato supera los 96 kHz, intenta primero formatos de voz con conversión compartida. MME y DirectSound conservan sus búferes de compatibilidad. ASIO queda disponible con selección explícita. Se registra si el controlador pierde bloques.
+
+El filtro de paso alto del flujo local atenúa corriente continua y ruido grave. Para el eco de las respuestas se mantiene el bloqueo del reconocedor de órdenes durante la síntesis, el descarte de bloques y el margen al reanudar. Una cancelación acústica completa necesita una referencia de reproducción sincronizada que el conjunto actual de WASAPI, MME y DirectSound no proporciona de forma uniforme. Los auriculares Bluetooth clásicos también pueden cambiar de perfil al abrir el micrófono. La causa específica de la distorsión en una llamada requiere comparar el mismo equipo con JARVIS apagado y encendido. [Modo compartido de Windows](https://learn.microsoft.com/windows/win32/coreaudio/exclusive-mode-streams) · [Audio Bluetooth clásico](https://learn.microsoft.com/es-es/windows-hardware/drivers/bluetooth/bluetooth-classic-audio)
+
+## Verificación del hablante
+
+Vosk usa el modelo local `vosk-model-spk-0.4` de 13 MiB aproximadamente, distribuido bajo Apache 2.0. Cada perfil necesita tres muestras coherentes. Se comparan las dos mejores similitudes de coseno por perfil y se exige margen entre perfiles. El valor predeterminado 72/100 es operativo, no una tasa biométrica certificada. La duración y la calidad de tu voz se comprueban físicamente. Una activación breve puede armar la escucha, con ejecución bloqueada hasta verificar la orden. Cada turno de una conversación debe corresponder al mismo perfil confirmado.
+
+Se guarda en `%LOCALAPPDATA%\JARVIS\perfiles-voz.dat` una lista versionada de firmas, cifrada e íntegra con DPAPI para el usuario actual. El servicio bloquea la ejecución si no hay perfiles válidos. Se verifica la autorización por segunda vez al despachar la acción. Las operaciones sensibles requieren que el usuario abra la bandeja y escriba un código de un solo uso antes de 25 segundos. La ventana concreta se revalida al ejecutar. El audio de enrolamiento permanece en memoria.
+
+La firma de voz admite falsos rechazos y falsos positivos, especialmente ante reproducciones, imitaciones y síntesis. La confirmación local es independiente de la voz y sigue siendo necesaria para las acciones sensibles. [Modelo de hablantes de Vosk](https://alphacephei.com/vosk/models) · [DPAPI](https://learn.microsoft.com/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)
+
+## Elección del reconocimiento
+
+| Motor | Evaluación para esta versión |
+| --- | --- |
+| Vosk + PocketSphinx | Conserva el flujo incremental en español ya empaquetado. Se verificaron órdenes sintéticas a 16 y 192 kHz y la extracción x-vector en CPU. La normalización y las sugerencias fonéticas operan sobre el catálogo de Windows. |
+| Whisper con whisper.cpp | Admite inferencia en CPU, cuantización y modelos multilingües. Tiny Q5 ocupa alrededor de 31 MiB solo en pesos. Sumado a los motores actuales y al modelo de voz supera el límite de los actualizadores antiguos y requiere medir latencia en equipos de referencia. |
+| sherpa-onnx | Ofrece alternativas multilingües locales y de flujo incremental. Incorporar el runtime y un modelo español requiere validar licencias, empaquetado, consumo y calidad antes de sustituir el flujo existente. |
+
+Se mantiene Vosk para esta versión. La comparación de alternativas se hizo por capacidades y tamaño de distribución. Las pruebas de precisión con audio del proyecto se ejecutaron en Vosk. [Whisper.cpp](https://github.com/ggml-org/whisper.cpp) · [Pesos cuantizados](https://huggingface.co/ggerganov/whisper.cpp) · [Sherpa ONNX](https://k2-fsa.github.io/sherpa/onnx/nemo/nemotron-streaming.html)
+
+La normalización, la comparación fonética, el diálogo y la similitud biométrica son módulos independientes del sistema operativo. Windows aporta su catálogo, la captura, DPAPI y el control del escritorio. La palabra de activación tiene un nombre centralizado y recursos propios como base para una configuración futura.
+
 ## Pruebas automatizadas
 
-- `python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue` comprueba comandos, bandeja, preferencias, reintento ante desconexión simulada, tratamiento de baja confianza y exclusión del audio durante la respuesta. Con los modelos y dependencias instalados, también procesa audio sintético. Las pruebas de captura simulan formatos rechazados, 48 kHz estéreo, flujo silencioso, alternativas entre APIs y un cambio del predeterminado. También comprueba filtrado y decimación de 192 kHz, continuidad a 44,1 kHz, migración de interfaces, transcripción en directo y cambio de ruta ante fallos de reconocimiento. En Windows se comprueban las consultas nativas de endpoint y asignador. Las pruebas de conversación cubren la lectura por partes, el seguimiento, la expiración, la repetición, la cancelación y las aclaraciones sin panel. Los formatos alternativos de WASAPI y la pérdida de una interfaz guardada se prueban con controladores simulados.
-- El diagnóstico del ejecutable abre las DLL y usa los modelos empaquetados para reconocer «Jarvis, abre Spotify» de corrido y con pausa. También comprueba una orden sin activación, el tiempo de espera, la enumeración de dispositivos y la síntesis en memoria, y reconoce una orden sintética capturada a 192 kHz con un tono fuera de banda añadido. El diagnóstico también verifica una orden sintética de seguimiento sin palabra de activación y que la gramática de síntesis admite «Jarvis, para» e ignora una orden normal. El diagnóstico usa audio sintético y no acciona Spotify.
-- `python -m unittest -v test_update_windows` comprueba el reinicio del ejecutable y la recuperación ante un arranque fallido. Requiere `dist/JARVIS.exe`. En CI también sustituye el ejecutable publicado de 0.4.1 usando el mecanismo de esa versión y comprueba el arranque de 0.6.3.
+- `python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security` comprueba comandos, bandeja, preferencias, reintento ante desconexión simulada, tratamiento de baja confianza y exclusión del audio durante la respuesta. Con los modelos y dependencias instalados, también procesa audio sintético. Las pruebas de captura simulan formatos rechazados, 48 kHz estéreo, flujo silencioso, alternativas entre APIs y un cambio del predeterminado. También comprueba filtrado y decimación de 192 kHz, continuidad a 44,1 kHz, migración de interfaces, transcripción en directo y cambio de ruta ante fallos de reconocimiento. En Windows se comprueban las consultas nativas de endpoint y asignador. Las pruebas de conversación cubren la lectura por partes, el seguimiento, la expiración, la repetición, la cancelación y las aclaraciones sin panel. Los formatos alternativos de WASAPI y la pérdida de una interfaz guardada se prueban con controladores simulados.
+- El diagnóstico del ejecutable abre las DLL y usa los modelos empaquetados para reconocer «Jarvis, abre Spotify» de corrido y con pausa. También comprueba una orden sin activación, el tiempo de espera, la enumeración de dispositivos y la síntesis en memoria, y reconoce una orden sintética capturada a 192 kHz con un tono fuera de banda añadido. El diagnóstico también verifica una orden sintética de seguimiento sin palabra de activación y que la gramática de síntesis admite «Jarvis, para» e ignora una orden normal. El diagnóstico usa audio sintético y no acciona Spotify. También extrae firmas de dos sintetizadores de prueba y comprueba que el comparador distinga las muestras seleccionadas. Las pruebas de Windows verifican DPAPI, migración, revocación y aprobación local simulada.
+- `python -m unittest -v test_update_windows` comprueba el reinicio del ejecutable y la recuperación ante un arranque fallido. Requiere `dist/JARVIS.exe`. En CI también sustituye el ejecutable publicado de 0.4.1 usando el mecanismo de esa versión y comprueba el arranque de 0.6.4.
 
 Desde un checkout del proyecto, puedes ejecutar el mismo diagnóstico del binario:
 
@@ -82,6 +108,9 @@ Get-Content diagnostico-voz.json -Encoding UTF8
 | Con el panel oculto, pide «Jarvis, ayuda», di «ventanas» y luego «sí», «repite» y «no». | JARVIS da ayuda hablada, conserva el tema y termina la conversación. |
 | Con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «la segunda» cuando enumere las opciones. | Elige la ventana anunciada y envía la solicitud normal de cierre. |
 | Con tus altavoces activos, interrumpe un tramo de una respuesta larga diciendo «Jarvis, para». Repite con el control de la bandeja. | La respuesta se corta y el altavoz no provoca órdenes de escritorio por realimentación. |
+| En Discord y WhatsApp, compara la calidad de la voz con JARVIS pausado y activo. Repite con Automática, WASAPI y, si procede, MME y DirectSound. | Comprueba si la llamada reproduce distorsión y busca pérdidas de bloques en el registro. Repite si cambias de auricular o controlador. |
+| Registra tres muestras propias y prueba órdenes de otra persona en la sala y desde una llamada. | JARVIS bloquea al hablante ajeno en la activación y durante una conversación. Comprueba también falsos rechazos de tu voz. |
+| Reproduce una grabación o voz sintética de prueba y solicita una operación sensible. | La operación solo puede ejecutarse tras la confirmación local. Desmarca Micrófono para cancelar la escucha. |
 | Con el micrófono que usas normalmente, selecciona MME y luego DirectSound. En cada prueba di «abre Spotify». Repite con WASAPI y Automática. | Distingue señal, actividad de voz y palabras reconocidas. Compara la transcripción y anota interfaz y frecuencia. |
 | Con la ruta que transcriba bien, guarda los ajustes y prueba «Jarvis, abre Spotify» con el panel oculto y tus demás aplicaciones de audio abiertas. | La orden se ejecuta desde la captura física habitual. |
 | Con **Predeterminado de Windows** activo, cambia la entrada en Configuración de Windows con JARVIS escuchando. | El medidor y las siguientes órdenes pasan al nuevo dispositivo. |

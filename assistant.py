@@ -14,16 +14,19 @@ class Assistant:
     def submit(self, command):
         return self.worker.submit(self.execute, command)
 
-    def submit_voice(self, command):
-        return self.worker.submit(self.execute, command, conversational=True)
+    def submit_voice(self, command, approved=False, guard=None):
+        return self.worker.submit(self.execute, command, conversational=True, require_approval=not approved,
+                                  guard=guard)
 
-    def execute(self, command, conversational=False):
+    def execute(self, command, conversational=False, require_approval=False, guard=None):
+        if guard is not None and not guard():
+            return "Se canceló la acción de voz."
         selection = None
         if isinstance(command, SelectedCommand):
             selection = command.option.target
             command = command.command
         try:
-            return execute(self.desktop, command, conversational, selection)
+            return execute(self.desktop, command, conversational, selection, require_approval)
         except OSError as error:
             return f"No se pudo completar la orden: {error}"
 

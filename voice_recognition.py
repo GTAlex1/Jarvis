@@ -3,11 +3,14 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from speakers import VoiceSample
+
 RATE = 16000
 SAMPLE_BYTES = 2
 CHUNK_FRAMES = RATE // 20
 ASSETS = Path(__file__).resolve().parent / "assets"
 MODEL_PATH = ASSETS / "vosk-model-small-es-0.42"
+SPEAKER_MODEL_PATH = ASSETS / "vosk-model-spk-0.4"
 TIMEOUT = 6.0
 WAKE_THRESHOLDS = (1e-12, 1e-16, 1e-20, 1e-22, 1e-24)
 # Keep a short bounded tail so a command may follow the keyword without a gap.
@@ -29,12 +32,14 @@ class WakeDetector:
         self.decoder.start_utt()
         self.history = bytearray()
         self.bytes_seen = 0
+        self.activation = b""
 
     def reset(self):
         self.decoder.end_utt()
         self.decoder.start_utt()
         self.history.clear()
         self.bytes_seen = 0
+        self.activation = b""
 
     def feed(self, pcm):
         self.bytes_seen += len(pcm)
@@ -48,6 +53,9 @@ class WakeDetector:
             end = (last.end_frame + 1) * (RATE // 100) * SAMPLE_BYTES
             start = max(0, end - (RATE // 40) * SAMPLE_BYTES)
             offset = max(0, len(self.history) + start - self.bytes_seen)
+            first = last.start_frame * (RATE // 100) * SAMPLE_BYTES
+            begin = max(0, len(self.history) + first - self.bytes_seen)
+            self.activation = bytes(self.history[begin:offset])
             return bytes(self.history[offset:])
         if self.bytes_seen >= WAKE_RESET_BYTES:
             # Replay one second at the rollover to catch words across it.
@@ -63,6 +71,7 @@ class WakeDetector:
 class Transcript:
     text: str
     confidence: float
+    speaker: VoiceSample | None = None
 
     @property
     def understood(self):
@@ -70,12 +79,14 @@ class Transcript:
 
 
 class SpanishRecognizer:
-    def __init__(self, model, grammar=()):
+    def __init__(self, model, grammar=(), speaker_model=None):
         from vosk import KaldiRecognizer
 
         args = (json.dumps(grammar),) if grammar else ()
         self.recognizer = KaldiRecognizer(model, RATE, *args)
         self.recognizer.SetWords(True)
+        if speaker_model is not None:
+            self.recognizer.SetSpkModel(speaker_model)
 
     def feed(self, pcm):
         if not pcm or not self.recognizer.AcceptWaveform(pcm):
@@ -96,7 +107,7 @@ class SpanishRecognizer:
             return None
         words = result.get("result", [])
         confidence = sum(word["conf"] for word in words) / len(words) if words else 0.0
-        return Transcript(text, confidence)
+        return Transcript(text, confidence, VoiceSample.from_result(result))
 
 
 
@@ -166,6 +177,26 @@ def spanish_model():
         return Model(str(MODEL_PATH))
     except Exception as error:
         raise OSError("No se pudo inicializar el modelo español.") from error
+
+
+def local_speaker_model():
+    from vosk import SetLogLevel, SpkModel
+
+    SetLogLevel(-1)
+    if not (SPEAKER_MODEL_PATH / "final.ext.raw").is_file():
+        raise OSError("Falta el modelo local de verificación de voz.")
+    try:
+        return SpkModel(str(SPEAKER_MODEL_PATH))
+    except Exception as error:
+        raise OSError("No se pudo iniciar la verificación de voz.") from error
+
+
+def wake_sample(model, speaker_model, pcm):
+    if not pcm:
+        return None
+    recognizer = SpanishRecognizer(model, speaker_model=speaker_model)
+    recognizer.recognizer.AcceptWaveform(pcm + bytes(RATE * SAMPLE_BYTES // 3))
+    return VoiceSample.from_result(json.loads(recognizer.recognizer.FinalResult()))
 
 
 class Conversation:

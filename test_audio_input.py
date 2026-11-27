@@ -21,6 +21,7 @@ class FakeSoundDevice:
         self.signals = signals
         self.tried = []
         self.opened = []
+        self.stream_options = []
 
     def check_input_settings(self, device, samplerate, channels, **_):
         request = (device, samplerate, channels)
@@ -28,8 +29,9 @@ class FakeSoundDevice:
         if request not in self.formats:
             raise self.PortAudioError("Invalid sample rate or channel count", -9997)
 
-    def RawInputStream(self, device, samplerate, channels, callback, dtype="int16", **_):
+    def RawInputStream(self, device, samplerate, channels, callback, dtype="int16", **options):
         stream = Mock(active=True)
+        self.stream_options.append(options)
         self.opened.append((device, samplerate, channels, stream))
 
         def start():
@@ -181,6 +183,27 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(capture.route.index, 7)
             self.assertIn("ASIO no está disponible", capture.notice)
             self.assertTrue(capture.automatic)
+
+    def test_wasapi_uses_shared_mode_and_host_period_at_high_driver_rates(self):
+        route = replace(WASAPI, rate=192000, mix=(192000, 1, "int16"))
+        preferred = next(iter(input_formats(route)))
+        self.assertEqual(preferred, AudioFormat(48000, 1, True))
+        driver = FakeSoundDevice([(4, 48000, 1)], {4: 500})
+        self.enterContext(patch("audio_input.portaudio", return_value=nullcontext(driver)))
+        self.enterContext(patch("audio_input.sys", Mock(platform="fixture")))
+        with capture_input(group_routes([route]), "endpoint-realtek", Event(), interface=BACKENDS[0]):
+            pass
+        options = driver.stream_options[0]
+        self.assertEqual(options["blocksize"], 0)
+        self.assertEqual(options["latency"], "high")
+        self.assertEqual(options["extra_settings"], {"exclusive": False, "auto_convert": True})
+
+    def test_asio_requires_explicit_selection_even_when_available(self):
+        asio = Route(13, "Interfaz compartida", "ASIO", 48000, 2, "asio", default=True)
+        inputs = group_routes([asio])
+        self.assertEqual(inputs.interfaces_for("asio"), {"ASIO"})
+        self.assertEqual(inputs.routes_for("asio"), [])
+        self.assertEqual(inputs.routes_for("asio", interface="ASIO"), [asio])
 
     def test_192khz_format_comes_after_voice_rates_and_filters_aliases(self):
         import audioop

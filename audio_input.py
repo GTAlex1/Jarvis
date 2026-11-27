@@ -88,7 +88,14 @@ class Inputs:
 
     def interfaces_for(self, selection):
         try:
-            return {route.api for route in self.routes_for(selection)}
+            available = {route.api for route in self.routes_for(selection)}
+            try:
+                self.routes_for(selection, interface="ASIO")
+            except CaptureError:
+                pass
+            else:
+                available.add("ASIO")
+            return available
         except CaptureError:
             return set()
 
@@ -110,6 +117,8 @@ class Inputs:
             if primary != default:
                 fallback = ()
         routes = (primary.routes if primary else ()) + fallback
+        if not interface:
+            routes = tuple(route for route in routes if route.api != "ASIO")
         if interface:
             routes = tuple(route for route in routes if route.api == interface)
             if not routes:
@@ -205,6 +214,9 @@ def input_formats(route):
     formats = []
     if route.mix:
         rate, channels, dtype = route.mix
+        if rate > 96000:
+            formats.append(AudioFormat(48000, min(2, channels), True, dtype))
+            formats.append(AudioFormat(RATE, 1, True))
         formats.append(AudioFormat(rate, channels, dtype=dtype))
         formats.append(AudioFormat(rate, channels, dtype="int16" if dtype == "float32" else "float32"))
         formats.append(AudioFormat(RATE, 1, True))
@@ -289,12 +301,16 @@ class Microphone:
         self.ended = Event()
         self.overflow = Event()
         self.converter = PcmConverter(audio_format)
+        self.low_pass_state = None
+        self.driver_overflow = Event()
+        self.last_warning = 0.0
         self.level = 0
         self.peak = 0
         self.prefetch = None
         self.verified = False
         self.stream = sd.RawInputStream(
-            **native_settings, blocksize=max(1, audio_format.rate // 20), latency="high",
+            **native_settings, blocksize=0 if route.api == BACKENDS[0] else max(1, audio_format.rate // 20),
+            latency="high",
             callback=self.receive, finished_callback=self.ended.set,
         )
 
@@ -303,8 +319,10 @@ class Microphone:
         return (f"{self.route.name} · {self.route.api} · {self.format.rate} Hz · "
                 f"{self.format.channels} canal(es) · {self.format.dtype}")
 
-    def receive(self, indata, _frames, _time, _status):
+    def receive(self, indata, _frames, _time, status):
         if self.capturing.is_set():
+            if status and status.input_overflow:
+                self.driver_overflow.set()
             try:
                 self.audio.put_nowait(bytes(indata))
             except Full:
@@ -349,6 +367,16 @@ class Microphone:
             return None
         self.last_input = monotonic()
         pcm = self.converter.convert(raw)
+        if pcm:
+            # Software-only high-pass around 80 Hz to attenuate DC and low rumble.
+            low, self.low_pass_state = audioop.ratecv(pcm, 2, 1, RATE, RATE, self.low_pass_state, 1, 30)
+            pcm = audioop.add(pcm, audioop.mul(low, 2, -1), 2)
+        if self.driver_overflow.is_set():
+            self.driver_overflow.clear()
+            now = monotonic()
+            if now - self.last_warning >= 10:
+                LOG.warning("captura: el controlador descartó bloques de %s", self.label)
+                self.last_warning = now
         amplitude = audioop.rms(pcm, 2)
         self.peak = max(self.peak, amplitude)
         self.level = min(100, max(0, round((20 * log10(max(amplitude, 1) / 32768) + 60) / 0.6)))
@@ -365,6 +393,7 @@ class Microphone:
             except Empty:
                 break
         self.converter.reset()
+        self.low_pass_state = None
         self.last_input = monotonic()
         self.capturing.set()
 
@@ -420,8 +449,8 @@ def capture_input(catalog, selection, changed, rejected=(), interface="", prefer
                     yield None
                     return
                 options = dict(device=route.index, samplerate=fmt.rate, channels=fmt.channels,
-                               dtype=fmt.dtype, extra_settings=sd.WasapiSettings(auto_convert=True)
-                               if fmt.convert else None)
+                               dtype=fmt.dtype, extra_settings=sd.WasapiSettings(exclusive=False, auto_convert=fmt.convert)
+                               if route.api == BACKENDS[0] else None)
                 with ExitStack() as attempt:
                     try:
                         sd.check_input_settings(**options)

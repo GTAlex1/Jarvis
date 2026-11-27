@@ -13,6 +13,7 @@ from resident import Resident
 from speech_cancel import SpeechCancellation
 from voice_recognition import Conversation, Transcript
 from voice_service import VoiceService
+from test_voice import PROFILE, SAMPLE
 
 
 class DialogueTest(unittest.TestCase):
@@ -24,9 +25,9 @@ class DialogueTest(unittest.TestCase):
         windows = dialogue.turn("ventanas", 1)
         self.assertIn("minimizar", windows.speech)
         self.assertIn("¿Quieres un ejemplo?", windows.speech)
-        example = dialogue.turn("sí", 2)
+        example = dialogue.turn("Sí, continúa con la explicación", 2)
         self.assertIn("mueve Firefox", example.speech)
-        self.assertEqual(dialogue.turn("repite", 3).speech, example.speech)
+        self.assertEqual(dialogue.turn("Repite lo que has dicho", 3).speech, example.speech)
         self.assertIn("izquierda", dialogue.turn("dame más detalles", 4).speech)
         self.assertTrue(dialogue.turn("no", 5).end)
         self.assertIn("Todavía", dialogue.turn("repite", 6).speech)
@@ -57,7 +58,7 @@ class DialogueTest(unittest.TestCase):
         first = dialogue.answer("cierra Firefox", result)
         self.assertIn("Opción 2", first.speech)
         self.assertIsNone(dialogue.turn("sí", 1).command)
-        selected = dialogue.turn("la segunda", 2).command
+        selected = dialogue.turn("Me refiero a la opción número dos, por favor", 2).command
         self.assertIsInstance(selected, SelectedCommand)
         self.assertIn("Solicité cerrar", execute(desktop, selected.command, True, selected.option.target))
         desktop.api.PostMessageW.assert_called_once_with(2, 0x10, 0, 0)
@@ -158,11 +159,12 @@ class VoiceIntegrationTest(unittest.TestCase):
         answer = Future()
         answer.set_result(HELP)
         service = VoiceService(Mock(return_value=answer), Mock(), Mock())
+        service.profiles = (PROFILE,)
         capture = Mock(level=22, label="simulada", notice="")
         detector = Mock(feed=Mock(return_value=b"tail"))
         recognizers = [
-            Mock(feed=Mock(return_value=Transcript("ayuda", 0.99))),
-            Mock(feed=Mock(return_value=Transcript("ventanas", 0.95))),
+            Mock(feed=Mock(return_value=Transcript("ayuda", 0.99, SAMPLE))),
+            Mock(feed=Mock(return_value=Transcript("ventanas", 0.95, SAMPLE))),
             Mock(),
         ]
 
@@ -177,7 +179,7 @@ class VoiceIntegrationTest(unittest.TestCase):
               patch("voice_service.speak") as speak,
               patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
             service.listen(capture, detector, VoiceSettings())
-        service.submit.assert_called_once_with("ayuda")
+        service.submit.assert_called_once_with("ayuda", PROFILE.id)
         self.assertEqual(detector.feed.call_count, 1)
         all_speech = " ".join(call.args[0] for call in speak.call_args_list)
         self.assertIn("¿Sobre qué necesitas ayuda?", all_speech)
@@ -189,6 +191,7 @@ class VoiceIntegrationTest(unittest.TestCase):
         resident.panel = None
         resident.microphone = True
         resident.voice_options = VoiceSettings(enabled=True)
+        resident.profiles = (PROFILE,)
         resident.voice_log = deque(maxlen=24)
         resident.events = SimpleQueue()
         resident.assistant = Mock()
@@ -197,7 +200,7 @@ class VoiceIntegrationTest(unittest.TestCase):
         output = Clarification("Hay varias ventanas.", (TargetOption("Una", (1,)),), "ventanas")
         reply.set_result(output)
         resident.assistant.submit_voice.return_value = reply
-        pending = resident.request_voice("cierra Firefox")
+        pending = resident.request_voice("cierra Firefox", PROFILE.id)
         resident.deliver()
         self.assertIs(pending.result(), output)
         self.assertIn(("Hay varias ventanas.", "reply"), resident.voice_log)

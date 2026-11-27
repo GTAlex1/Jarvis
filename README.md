@@ -21,12 +21,20 @@ La animación se detiene al ocultar o minimizar el panel.
 
 ## Usar JARVIS por voz
 
-1. Abre **Ajustes de voz** en el panel o en la bandeja. Elige el micrófono y activa **Escucha permanente**. El interruptor **Micrófono** de la bandeja debe estar marcado.
-2. Puedes cerrar el panel con la X. Di **«Jarvis, abre Spotify»** de corrido, o di **«Jarvis»**, haz una pausa y luego da la orden. Spotify debe aparecer en el menú Inicio para que JARVIS pueda abrirlo.
-3. JARVIS dispone de hasta **6 segundos** tras la activación inicial para reconocer la orden. El panel muestra el estado de voz y el icono de la bandeja lo indica al pasar el ratón.
-4. Después de ejecutar la orden, JARVIS responde con la voz elegida y vuelve a esperar. El **volumen 0** silencia las respuestas. Con **Automática**, prioriza las voces en español disponibles en el motor clásico de Windows.
+1. Abre **Perfiles de voz** desde la bandeja. Graba tres frases distintas en un entorno tranquilo, con permiso de la persona que habla, y guarda el perfil.
+2. En **Ajustes de voz** elige el micrófono y activa **Escucha permanente**. Comprueba que **Micrófono** esté marcado en la bandeja.
+3. Puedes cerrar el panel con la X. Di «Jarvis, abre Spotify» de corrido o con una pausa breve. JARVIS verifica la voz que pronuncia la orden. Si dices «Jarvis» por separado y la muestra es demasiado corta, la activación queda pendiente hasta verificar la frase siguiente.
+4. Comprueba el estado en el panel o en el icono de la bandeja. Si un turno es demasiado breve para verificarlo, usa una frase más larga, como «Sí, continúa con la explicación».
 
-La detección y el reconocimiento funcionan en el equipo. El ejecutable incluye los modelos y puede usarlos sin conexión ni claves. JARVIS procesa el audio en memoria, descarta la entrada durante su propia respuesta y guarda las preferencias de voz en tu cuenta de Windows. El historial del panel muestra texto durante la sesión.
+Spotify y los nombres de juegos deben figurar entre las aplicaciones que Windows expone o las ventanas abiertas. JARVIS acepta variantes como «cerraré Spotify» y puede sugerir una coincidencia para «roquet lig» sin ejecutarla automáticamente.
+
+### Perfiles y autorización
+
+Desde **Perfiles de voz** puedes añadir, renombrar, renovar y eliminar perfiles. La exigencia de coincidencia se ajusta en **Ajustes de voz**. La captura de órdenes queda bloqueada sin perfiles válidos. El registro conserva firmas cifradas para la cuenta de Windows con DPAPI y procesa las muestras en memoria.
+
+Para cerrar una ventana, bloquear Windows, capturar la pantalla, abrir herramientas administrativas o salir de JARVIS por voz, abre **Confirmar acción de voz** en la bandeja y escribe el código mostrado. El código es de un solo uso y caduca. Para detener la escucha y cancelar una solicitud pendiente, desmarca **Micrófono** o **Escucha permanente** en la bandeja. Los comandos escritos siguen disponibles.
+
+La firma de voz es probabilística. Grabaciones, imitaciones o voces sintéticas pueden parecerse a un perfil y superar la verificación. La confirmación local protege las operaciones sensibles aun en ese caso.
 
 ### Conversar desde la bandeja
 
@@ -38,7 +46,7 @@ Por defecto, después de responder JARVIS te escucha durante **8 segundos** sin 
 
 ### Probar el reconocimiento
 
-Elige un micrófono y una de las interfaces disponibles para ese dispositivo. **Automática** intenta MME y DirectSound antes que WASAPI cuando esas rutas están disponibles. También puede cambiar de ruta si la captura o el reconocimiento fallan. ASIO aparece cuando Windows lo expone para la entrada elegida.
+Elige un micrófono y una de las interfaces disponibles para ese dispositivo. **Automática** intenta MME y DirectSound antes que WASAPI cuando esas rutas están disponibles. También puede cambiar de ruta si la captura o el reconocimiento fallan. WASAPI usa captura compartida y el periodo del controlador. ASIO se ofrece si está disponible para la entrada y requiere elegirlo explícitamente.
 
 Pulsa **Probar micrófono** y di «abre Spotify». La prueba distingue señal, actividad de voz y palabras reconocidas, y muestra la transcripción en directo. Si cambia la ruta del medidor, repite la frase. El registro técnico se guarda en `%LOCALAPPDATA%\JARVIS\voz.log`. El audio y la transcripción de la prueba se procesan en memoria.
 
@@ -94,11 +102,11 @@ python prepare_voice_model.py
 python jarvis_gui.py
 ```
 
-Para el dictado manual de consola, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. Con **Micrófono** habilitado, pulsa Intro con la línea vacía y confirma con `s`. El dictado requiere un motor de reconocimiento de voz en español compatible con System.Speech.
+Para usar la consola por teclado, sal de la aplicación de bandeja y ejecuta `python jarvis.py`. La entrada de voz se gestiona desde la aplicación de bandeja y utiliza los perfiles autorizados.
 
 Las pruebas que requieren tu equipo están en la [lista de comprobación manual](Guia.md#pruebas-con-tu-micrófono). Consulta la [wiki](https://github.com/GTAlex1/Jarvis/wiki) y la [guía de desarrollo](Guia.md).
 
 
 ## Distribución y desarrollo
 
-El ejecutable incluye las dependencias y los modelos esenciales. El reconocimiento y los comandos funcionan localmente en CPU. Consulta los [requisitos del proyecto](AGENTS.md) y la [hoja de ruta](ROADMAP.md).
+El ejecutable incluye las dependencias y los modelos esenciales. El reconocimiento y los comandos funcionan localmente en CPU. Consulta los [requisitos del proyecto](AGENTS.md) y la [hoja de ruta](ROADMAP.md) y el [historial de cambios](CHANGELOG.md).

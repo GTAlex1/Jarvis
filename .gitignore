@@ -5,3 +5,4 @@ __pycache__/
 assets/vosk-model-small-es-0.42/
 build/
 dist/
+assets/vosk-model-spk-0.4/

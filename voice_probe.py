@@ -9,8 +9,9 @@ from commands import parse
 from audio_input import AudioFormat, PcmConverter, input_devices
 from voice_audio import installed_voices, test_synthesis
 from speech_cancel import SpeechCancellation
+from speakers import Profile, identify
 from voice_recognition import (
-    CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, spanish_model,
+    CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, local_speaker_model, spanish_model,
 )
 
 
@@ -48,7 +49,35 @@ def test_audio(folder):
     report["reconocimiento_192khz"] = "correcto"
     dialogue_audio(model, command, fixture(folder, "stop"), silence)
     report["continuación_e_interrupción"] = "correcto"
+    verify_synthetic_speakers(model, command, fixture(folder, "stop"), wake)
+    report["verificación_local_de_hablante"] = "correcto"
     return report
+
+
+def verify_synthetic_speakers(model, command, same, different):
+    speaker_model = local_speaker_model()
+    samples = []
+    for fixture in (command, same, different):
+        decoder = SpanishRecognizer(model, speaker_model=speaker_model)
+        audio = bytes(16000) + fixture + bytes(32000)
+        transcripts = []
+        step = CHUNK_FRAMES * SAMPLE_BYTES
+        for start in range(0, len(audio), step):
+            if result := decoder.feed(audio[start:start + step]):
+                transcripts.append(result)
+        if result := decoder.finish():
+            transcripts.append(result)
+        vectors = [result.speaker for result in transcripts if result.speaker]
+        if not vectors:
+            raise AssertionError("El modelo local no produjo una firma de voz.")
+        samples.append(max(vectors, key=lambda sample: sample.frames))
+
+    enrolled = Profile("synthetic", "eSpeak", (samples[0].vector,) * 3)
+    if identify(samples[1], (enrolled,), 0.72) != enrolled.id:
+        raise AssertionError("No coincidieron frases sintéticas de la misma voz.")
+    if identify(samples[2], (enrolled,), 0.72) is not None:
+        raise AssertionError("Una voz sintética distinta superó el umbral.")
+
 
 
 def dialogue_audio(model, command, stop, silence):

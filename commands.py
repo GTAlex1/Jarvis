@@ -2,12 +2,15 @@
 import re
 import unicodedata
 
+WAKE_WORD = "Jarvis"
+WAKE_PREFIX = re.compile(r"^(?:oye )?" + re.escape(WAKE_WORD.casefold()) + r"[, ]+")
+
 
 def clean(value):
     value = "".join(ch for ch in unicodedata.normalize("NFD", value.lower())
                     if not unicodedata.combining(ch))
     value = " ".join(value.strip().rstrip(".!?").split())
-    return re.sub(r"^(?:oye )?jarvis[, ]+", "", value)
+    return WAKE_PREFIX.sub("", value)
 
 
 # Keep corrections explicit so an application name is never guessed.

@@ -7,8 +7,13 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from preferences import VoiceSettings
-from voice_recognition import MODEL_PATH, TIMEOUT, Conversation, MicRecognition, Transcript
+from voice_recognition import MODEL_PATH, SPEAKER_MODEL_PATH, TIMEOUT, Conversation, MicRecognition, Transcript
 from voice_service import RecognitionRouteError, VoiceService
+from speakers import Profile, VoiceSample
+
+VECTOR = (1.0,) + (0.0,) * 127
+SAMPLE = VoiceSample(VECTOR, 120)
+PROFILE = Profile("test-voice", "Persona de prueba", (VECTOR,) * 3)
 
 
 class ConversationTest(unittest.TestCase):
@@ -36,12 +41,13 @@ class VoiceServiceTest(unittest.TestCase):
         reply.set_result("Abrí Spotify.")
         on_state = Mock()
         service = VoiceService(Mock(return_value=reply), on_state, Mock())
+        service.profiles = (PROFILE,)
         settings = VoiceSettings(enabled=True, conversational=False)
         capture = Mock(level=0, label="Micrófono simulado", notice="")
         detector = Mock()
         detector.feed.return_value = b"tail"
         recognizer = Mock()
-        recognizer.feed.return_value = Transcript("abre spotify", 0.96)
+        recognizer.feed.return_value = Transcript("abre spotify", 0.96, SAMPLE)
 
         def read():
             if capture.read.call_count == 1:
@@ -61,7 +67,7 @@ class VoiceServiceTest(unittest.TestCase):
               patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
             service.listen(capture, detector, settings)
 
-        service.submit.assert_called_once_with("abre spotify")
+        service.submit.assert_called_once_with("abre spotify", PROFILE.id)
         capture.resume.assert_called_once()
         detector.reset.assert_called_once()
         self.assertEqual([call.args[0] for call in on_state.call_args_list],
@@ -76,7 +82,7 @@ class VoiceServiceTest(unittest.TestCase):
             service.changed.clear()
             from dialogue import Dialogue
             settings = VoiceSettings(enabled=True)
-            turn = service.interpret(Transcript("cierra Spotify", 0.31), Dialogue(), settings, 0)
+            turn = service.interpret(Transcript("cierra Spotify", 0.31, SAMPLE), Dialogue(), settings, 0, PROFILE.id)
             service.play(turn.speech, settings)
         service.submit.assert_not_called()
         speak.assert_called_once()
@@ -91,6 +97,7 @@ class VoiceServiceTest(unittest.TestCase):
                 waiting.set()
 
         service = VoiceService(Mock(), state_change, Mock())
+        service.profiles = (PROFILE,)
         capture = Mock(level=0, label="Micrófono simulado", available_routes=(), automatic=False, notice="")
         def read():
             service.changed.wait(0.02)
@@ -167,7 +174,8 @@ class VoiceServiceTest(unittest.TestCase):
             self.assertEqual(voice_settings(), VoiceSettings(True, "realtek", "Helena", 42, 4))
 
 
-@unittest.skipUnless((MODEL_PATH / "am" / "final.mdl").is_file(), "Requiere el modelo de voz local")
+@unittest.skipUnless((MODEL_PATH / "am" / "final.mdl").is_file() and
+                     (SPEAKER_MODEL_PATH / "final.ext.raw").is_file(), "Requiere los modelos de voz locales")
 class SyntheticAudioTest(unittest.TestCase):
     def test_recognition_of_synthetic_spanish_commands(self):
         from voice_probe import test_audio
@@ -175,6 +183,7 @@ class SyntheticAudioTest(unittest.TestCase):
         report = test_audio(Path(__file__).with_name("tests") / "voice")
         self.assertEqual(report["reconocimiento_192khz"], "correcto")
         self.assertEqual(report["continuación_e_interrupción"], "correcto")
+        self.assertEqual(report["verificación_local_de_hablante"], "correcto")
 
 
 @unittest.skipUnless(sys.platform == "win32", "Requiere el registro de Windows")
@@ -189,7 +198,7 @@ class WindowsVoicePreferencesTest(unittest.TestCase):
             try:
                 self.assertEqual(voice_settings(), VoiceSettings())
                 custom = VoiceSettings(True, "Micrófono USB", "Microsoft Helena", 45, 4, "MME",
-                                       False, 45, 12, "ampliado")
+                                       False, 45, 12, "ampliado", 80)
                 save_voice_settings(custom)
                 self.assertEqual(voice_settings(), custom)
             finally:

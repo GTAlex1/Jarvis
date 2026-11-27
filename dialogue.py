@@ -3,10 +3,11 @@ from dataclasses import dataclass
 import re
 from textwrap import wrap
 
-from commands import SPOKEN_NUMBERS, clean, parse
+from commands import SPOKEN_NUMBERS, WAKE_WORD, clean, parse
+from voice_authorization import LocalApproval
 
 STOP = {"para", "parate", "detente", "cancela", "cancelar", "cancelalo"}
-INTERRUPT_PHRASES = ("jarvis para", "jarvis cancela", "jarvis detente")
+INTERRUPT_PHRASES = tuple(f"{WAKE_WORD.casefold()} {verb}" for verb in ("para", "cancela", "detente"))
 NEXT = {"continua", "sigue", "siguiente", "dame mas detalles", "mas detalles", "mas",
         "dame un ejemplo", "un ejemplo", "ejemplo"}
 YES = {"si", "si por favor", "vale", "de acuerdo", "claro"}
@@ -136,10 +137,14 @@ class Dialogue:
         self.pending = None
 
     def answer(self, command, result):
+        if isinstance(result, LocalApproval):
+            self.clear()
+            return Turn(speech="Esa acción necesita confirmación. Abre Confirmar acción de voz en la bandeja.", end=True)
         if isinstance(result, Clarification):
             self.clear()
             if not self.enabled:
-                return self.say(f"Encontré varias {result.kind}. Di la orden con el nombre completo.")
+                return self.say("Di la orden de nuevo con el nombre exacto que te indico. " +
+                                ", ".join(item.label for item in result.options[:3]) + ".")
             self.pending = (command, result)
             return self.options()
         source = command.command if isinstance(command, SelectedCommand) else command
@@ -183,7 +188,8 @@ class Dialogue:
         for i, item in enumerate(choices, self.option_offset):
             short = item.label.strip()[:130]
             segments.append(f"Opción {i + 1}, {short}.")
-        prompt = reminder or f"Encontré {count} {result.kind}."
+        prompt = reminder or (f"¿Te refieres a esta opción de {result.kind}?" if count == 1
+                              else f"Encontré {count} opciones de {result.kind}.")
         ending = "Di el número o el nombre."
         if self.option_offset + len(choices) < count:
             ending += " También puedes decir continúa."
@@ -191,6 +197,8 @@ class Dialogue:
 
     def choose(self, key):
         command, result = self.pending
+        key = re.sub(r"^(?:me refiero a |elige |quiero )", "", key)
+        key = re.sub(r"[ ,]+por favor$", "", key)
         value = re.sub(r"^(?:(?:la|el) |(?:opcion|numero) )+", "", key).strip()
         if value.isascii() and value.isdigit() and len(value) <= 4:
             number = int(value)
@@ -210,6 +218,12 @@ class Dialogue:
     def turn(self, text, now):
         self.expire(now)
         key = clean(text).strip("¿?¡!")
+        if re.fullmatch(r"(?:si[, ]+)?continua(?: con (?:la explicacion|la respuesta|la lista))?", key):
+            key = "continua"
+        elif re.fullmatch(r"repite (?:lo que (?:has )?dicho|la ultima respuesta)", key):
+            key = "repite"
+        elif key in {"no, gracias", "cancela la conversacion", "cancela la orden", "para de hablar"}:
+            key = "cancela"
         if key in STOP or (key in NO and self.last):
             self.clear()
             return Turn(speech="De acuerdo.", end=True)

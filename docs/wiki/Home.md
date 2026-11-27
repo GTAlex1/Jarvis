@@ -16,6 +16,14 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja. Los modelos incluidos trabajan localmente. El audio se procesa en memoria y la entrada se descarta durante las respuestas de JARVIS. Puedes desactivar la escucha desde la bandeja y seguir usando el panel.
 
+## Seguridad de voz en 0.6.4
+
+Abre **Perfiles de voz** en la bandeja. Graba tres frases propias y guarda el perfil. Puedes renombrarlo, renovar sus muestras o eliminarlo. JARVIS verifica la voz al recibir órdenes y en cada seguimiento. Las firmas están cifradas para la cuenta local de Windows.
+
+Las acciones sensibles requieren **Confirmar acción de voz** y el código que muestra el panel local. Grabaciones e imitaciones pueden superar la comprobación biométrica. Desmarca **Micrófono** en la bandeja para detener la escucha. Puedes seguir usando comandos escritos.
+
+JARVIS usa WASAPI compartida, MME y DirectSound. Para comprobar la convivencia con Discord o WhatsApp, compara una llamada con la escucha activa y pausada. La [guía](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md) separa las pruebas automatizadas de las comprobaciones físicas.
+
 ## Conversar sin abrir el panel
 
 Di «Jarvis, ayuda» y responde «ventanas» cuando te pregunte. Puedes decir «continúa», «repite», «dame más detalles», «sí», «no» o «cancela». Las respuestas largas se pueden escuchar en partes. Si hay más de una coincidencia para una ventana o aplicación, JARVIS te pregunta cuál quieres.
@@ -45,3 +53,5 @@ Si necesitas distinguir problemas del controlador y del reconocimiento, abre `%L
 **Pantallas** muestra los identificadores. Si omites el monitor, se usa el principal. **Ventanas** lista los programas y títulos visibles. Si hay varias coincidencias, usa un título más específico.
 
 La [guía de desarrollo](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md) explica las pruebas automáticas y qué comprobar con tu micrófono. El [README](https://github.com/GTAlex1/Jarvis#readme) incluye la lista completa de comandos y cómo probar el código fuente.
+
+Consulta el [historial de cambios](https://github.com/GTAlex1/Jarvis/blob/main/CHANGELOG.md) y la [hoja de ruta de Nexora e Insider](https://github.com/GTAlex1/Jarvis/blob/main/ROADMAP.md).

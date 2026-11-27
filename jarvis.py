@@ -8,7 +8,9 @@ import subprocess
 import sys
 import unicodedata
 from commands import HELP, clean, parse, rectangle
-from dialogue import Clarification, TargetOption
+from dialogue import Clarification, SelectedCommand, TargetOption
+from command_language import rank_targets
+from voice_authorization import LocalApproval, sensitive_intent
 
 
 def normalize(value):
@@ -45,7 +47,7 @@ def app_label(executable):
     return APP_NAMES.get(normalize(executable), (executable,))[0]
 
 
-def matching_windows(windows, query):
+def matching_windows(windows, query, exact_only=False):
     exact = [
         window for window in windows
         if query == normalize(window[1])
@@ -55,12 +57,12 @@ def matching_windows(windows, query):
             if name
         }
     ]
-    if exact:
+    if exact or exact_only:
         return exact
     return [window for window in windows if query in normalize(window[1])]
 
 
-def launch_matches(apps, query):
+def launch_matches(apps, query, exact_only=False):
     names = {query}
     for executable, aliases in APP_NAMES.items():
         group = {normalize(alias) for alias in (executable, *aliases)}
@@ -68,7 +70,7 @@ def launch_matches(apps, query):
             names = group
             break
     exact = [app for app in apps if normalize(app[0]) in names]
-    if exact:
+    if exact or exact_only:
         return exact
     return [app for app in apps if query in normalize(app[0])]
 
@@ -212,7 +214,7 @@ class Desktop:
         except (subprocess.SubprocessError, ValueError) as error:
             raise OSError("Windows no pudo consultar las aplicaciones del menú Inicio.") from error
 
-    def open_app(self, title, selection=None):
+    def open_app(self, title, selection=None, voice=False):
         builtins = {
             "configuracion": "ms-settings:", "ajustes": "ms-settings:",
             "configuracion de pantalla": "ms-settings:display",
@@ -234,18 +236,23 @@ class Desktop:
         if title in executables:
             os.startfile(os.path.join(os.environ["SystemRoot"], executables[title]))
             return f"Solicité abrir «{title}»."
-        matches = launch_matches(self.applications(), title)
-        if not matches:
-            return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
+        apps = self.applications()
         if selection is not None:
-            if selection not in matches:
+            if selection not in apps:
                 raise ValueError("La aplicación elegida ya no está disponible. Vuelve a pedir la orden.")
             name, app_id = selection
-        elif len(matches) > 1:
-            names = "\n".join(f"  {name}" for name, _ in matches)
-            raise AmbiguousTarget(f"Encontré varias aplicaciones. Usa su nombre completo:\n{names}",
-                                  "aplicaciones", (TargetOption(item[0], item) for item in matches))
         else:
+            matches = launch_matches(apps, title, exact_only=voice)
+            approximate = voice and not matches
+            if approximate:
+                matches = rank_targets(title, apps, lambda item: (item[0],))
+            if not matches:
+                return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
+            if len(matches) > 1 or approximate:
+                names = "\n".join(f"  {name}" for name, _ in matches)
+                heading = "Aplicaciones posibles" if approximate else "Encontré varias aplicaciones"
+                raise AmbiguousTarget(f"{heading}. Usa su nombre completo:\n{names}",
+                                      "aplicaciones", (TargetOption(item[0], item) for item in matches))
             name, app_id = matches[0]
         if title == normalize("Explorador") or normalize(name) in {"explorador de archivos", "file explorer"}:
             os.startfile(os.environ["SystemRoot"] + r"\explorer.exe")
@@ -253,8 +260,11 @@ class Desktop:
             os.startfile("shell:AppsFolder\\" + app_id)
         return f"Solicité a Windows que abriera «{name}»."
 
-    def minimize(self, title):
-        matches = matching_windows(self.windows(), title)
+    def minimize(self, title, selection=None, voice=False):
+        if voice or selection is not None:
+            matches = [self.select_window(title, selection, voice=True)]
+        else:
+            matches = matching_windows(self.windows(), title)
         if not matches:
             return f"No encontré ninguna ventana abierta que coincida con «{title}»."
         minimized = []
@@ -267,22 +277,27 @@ class Desktop:
         lines.extend(f"No pude minimizar «{name}»." for name in failed)
         return "\n".join(lines)
 
-    def select_window(self, title, selection=None):
-        matches = matching_windows(self.windows(), title)
+    def select_window(self, title, selection=None, voice=False):
+        windows = self.windows()
         if selection is not None:
-            if selection not in matches:
+            if selection not in windows:
                 raise ValueError("La ventana elegida ha cambiado o se ha cerrado. Vuelve a pedir la orden.")
             return selection
+        matches = matching_windows(windows, title, exact_only=voice)
+        approximate = voice and not matches
+        if approximate:
+            matches = rank_targets(title, windows, lambda item: (item[1], item[2], *APP_NAMES.get(item[2], ())))
         if not matches:
             raise ValueError(f"No encontré una ventana de «{title}». Puedes usar «abre {title}».")
-        if len(matches) > 1:
+        if len(matches) > 1 or approximate:
             names = "\n".join(f"  {name}" for _, name, _ in matches)
             raise AmbiguousTarget(f"Hay varias ventanas. Usa un título más específico:\n{names}",
                                   "ventanas", (TargetOption(item[1], item) for item in matches))
         return matches[0]
 
-    def window_action(self, action, title, selection=None):
-        handle, name, _ = self.select_window(title, selection) if selection else self.select_window(title)
+    def window_action(self, action, title, selection=None, voice=False):
+        handle, name, _ = (self.select_window(title, selection, voice) if selection or voice
+                           else self.select_window(title))
         if action == "close":
             if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
                 raise c.WinError(c.get_last_error())
@@ -301,14 +316,15 @@ class Desktop:
             return f"Windows impidió poner «{name}» en primer plano. Selecciónala desde la barra de tareas."
         raise ValueError("Acción de ventana desconocida.")
 
-    def move(self, title, side, screen, selection=None):
+    def move(self, title, side, screen, selection=None, voice=False):
         position = {"izquierda": "left", "derecha": "right", "completa": "full"}.get(side, side)
         screens = self.screens()
         if screen in (None, 0):
             screen = next((number for number, (_, primary) in screens.items() if primary), None)
         if screen not in screens:
             return "No encontré esa pantalla. Escribe «pantallas» para ver las disponibles."
-        handle, name, _ = self.select_window(title, selection) if selection else self.select_window(title)
+        handle, name, _ = (self.select_window(title, selection, voice) if selection or voice
+                           else self.select_window(title))
         was_maximized = self.api.IsZoomed(handle)
         if was_maximized or self.api.IsIconic(handle):
             self.api.ShowWindow(handle, 1)  # Restore to normal size before positioning
@@ -361,43 +377,24 @@ class Desktop:
         return f"Envié a Windows la orden de {labels[action]}."
 
 
-def listen():
-    script = """
-    $ErrorActionPreference = 'Stop'
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    Add-Type -AssemblyName System.Speech
-    $recognizer = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
-        Where-Object { $_.Culture.TwoLetterISOLanguageName -eq 'es' } |
-        Select-Object -First 1
-    if (-not $recognizer) { exit 2 }
-    $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($recognizer)
-    try {
-        $engine.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
-        $engine.SetInputToDefaultAudioDevice()
-        $result = $engine.Recognize([TimeSpan]::FromSeconds(6))
-        if ($result -and $result.Confidence -ge 0.55) { $result.Text }
-    } finally {
-        $engine.Dispose()
-    }
-    """
-    result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True, encoding="utf-8", errors="replace", timeout=20,
-    )
-    if result.returncode == 2:
-        print("Falta un motor de reconocimiento de voz en español compatible con Windows.")
-    elif result.returncode:
-        print("No pude iniciar el reconocimiento de voz. Comprueba el micrófono y el idioma.")
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def execute(desktop, command, conversational=False, selection=None):
+def execute(desktop, command, conversational=False, selection=None, require_approval=False):
     parsed = parse(command)
     if not parsed:
         return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
     action, *args = parsed
     target = {"selection": selection} if selection is not None else {}
+    if conversational and require_approval:
+        target["voice"] = True
     try:
+        if require_approval and sensitive_intent(
+            parsed, normalize(selection[0]) if action == "open" and selection else "",
+        ):
+            if action == "close":
+                window = desktop.select_window(args[0], selection, voice=True)
+                return LocalApproval(SelectedCommand(command, TargetOption(window[1], window)),
+                                     f"Cerrar la ventana «{window[1]}»")
+            pending = SelectedCommand(command, TargetOption(selection[0], selection)) if selection else command
+            return LocalApproval(pending, command.capitalize())
         if action == "help":
             return HELP
         if action == "screens":
@@ -415,7 +412,7 @@ def execute(desktop, command, conversational=False, selection=None):
         if action == "open":
             return desktop.open_app(*args, **target)
         if action == "minimize":
-            return desktop.minimize(*args)
+            return desktop.minimize(*args, **target)
         if action == "place":
             return desktop.move(*args, **target)
         if action == "system":
@@ -434,7 +431,6 @@ def main():
         print("JARVIS necesita Windows 10 o 11 para controlar el escritorio.")
         return 1
     from assistant import Assistant
-    from preferences import microphone_enabled
     from windows_tray import single_instance
 
     with single_instance() as first:
@@ -443,28 +439,18 @@ def main():
             return 1
         assistant = Assistant()
         try:
-            return console(assistant, microphone_enabled)
+            return console(assistant)
         finally:
             assistant.close()
 
 
-def console(assistant, microphone_enabled):
-    print("JARVIS · Pulsa Intro con la línea vacía para dictar.\n" + HELP)
+def console(assistant):
+    print("JARVIS · La entrada por voz se gestiona desde la bandeja.\n" + HELP)
     while True:
         try:
             command = input("\nTú > ").strip()
             if not command:
-                if not microphone_enabled():
-                    print("El micrófono de JARVIS está desactivado. Puedes escribir la orden.")
-                    continue
-                print("Escuchando…")
-                command = listen()
-                if not command:
-                    print("Puedes repetir la orden o escribirla.")
-                    continue
-                print(f"Te entendí: {command}")
-                if input("¿Ejecutar? [s/N] ").strip().lower() != "s":
-                    continue
+                continue
             if parse(command) == ("exit",):
                 return 0
             print(assistant.execute(command))

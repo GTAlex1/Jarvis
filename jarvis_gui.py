@@ -267,19 +267,21 @@ class VoiceDialog:
         self.detail = self.combobox("Detalle hablado", 9)
         self.detail.configure(values=("Breve", "Normal", "Ampliado"))
         self.detail.set(settings.speech_detail.capitalize())
-        self.label("Nivel del micrófono", 10)
+        self.speaker_threshold = tk.StringVar(window, str(settings.speaker_threshold))
+        self.seconds("Exigencia de voz (65–90)", self.speaker_threshold, 65, 90, 10)
+        self.label("Nivel del micrófono", 11)
         self.level = ttk.Progressbar(window, maximum=100, mode="determinate")
-        self.level.grid(row=10, column=1, sticky="ew", pady=4)
+        self.level.grid(row=11, column=1, sticky="ew", pady=4)
         self.input_route = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.input_route.grid(row=11, column=0, columnspan=2, sticky="w")
+        self.input_route.grid(row=12, column=0, columnspan=2, sticky="w")
         self.test_status = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.test_status.grid(row=12, column=0, columnspan=2, sticky="w")
+        self.test_status.grid(row=13, column=0, columnspan=2, sticky="w")
         self.transcription = tk.Label(window, bg=BG, fg=CYAN, wraplength=420, justify="left")
-        self.transcription.grid(row=13, column=0, columnspan=2, sticky="w")
+        self.transcription.grid(row=14, column=0, columnspan=2, sticky="w")
         self.notice = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.notice.grid(row=14, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self.notice.grid(row=15, column=0, columnspan=2, sticky="w", pady=(10, 4))
         controls = tk.Frame(window, bg=BG)
-        controls.grid(row=15, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        controls.grid(row=16, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.reload = ttk.Button(controls, text="Actualizar lista", command=self.load)
         self.reload.pack(side="left")
         self.test_button = ttk.Button(controls, text="Probar micrófono", command=self.start_test)
@@ -404,6 +406,7 @@ class VoiceDialog:
                 sensitivity=self.sensitivity.get(), interface=CAPTURE_INTERFACES[self.interface.get()],
                 conversational=self.conversational.get(), context_seconds=int(self.context_seconds.get()),
                 reply_seconds=int(self.reply_seconds.get()), speech_detail=self.detail.get().lower(),
+                speaker_threshold=int(self.speaker_threshold.get()),
             ))
         except (OSError, ValueError) as error:
             messagebox.showerror("JARVIS", str(error), parent=self.window)

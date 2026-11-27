@@ -88,10 +88,13 @@ class VoiceSettings:
     context_seconds: int = 25
     reply_seconds: int = 8
     speech_detail: str = "normal"
+    speaker_threshold: int = 72
 
     def __post_init__(self):
         if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):
             raise ValueError("Configuración de voz no válida.")
+        if type(self.speaker_threshold) is not int or not 65 <= self.speaker_threshold <= 90:
+            raise ValueError("La exigencia de voz debe estar entre 65 y 90.")
         if type(self.conversational) is not bool:
             raise ValueError("Modo conversacional no válido.")
         if type(self.context_seconds) is not int or not 5 <= self.context_seconds <= 120:

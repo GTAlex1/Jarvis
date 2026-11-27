@@ -4,11 +4,14 @@ from voice_recognition import SpanishRecognizer
 
 
 class SpeechCancellation:
-    def __init__(self, changed, stopped, capture, model=None):
+    def __init__(self, changed, stopped, capture, model=None, speaker_model=None, authorize=None):
         self.changed = changed
         self.stopped = stopped
         self.capture = capture
-        self.recognizer = SpanishRecognizer(model, (*INTERRUPT_PHRASES, "[unk]")) if model else None
+        self.authorize = authorize
+        grammar = (*INTERRUPT_PHRASES, "[unk]")
+        self.recognizer = (SpanishRecognizer(model, grammar, speaker_model=speaker_model)
+                           if model and speaker_model else SpanishRecognizer(model, grammar) if model else None)
         self.error = None
 
     def is_set(self):
@@ -17,12 +20,13 @@ class SpeechCancellation:
         if self.recognizer is None:
             return False
         try:
-            for _ in range(8):
+            for _ in range(32):
                 pcm = self.capture.read(timeout=0)
                 if pcm is None:
                     break
                 result = self.recognizer.feed(pcm)
-                if result and result.confidence >= 0.82 and result.text.casefold() in INTERRUPT_PHRASES:
+                if (result and result.confidence >= 0.82 and result.text.casefold() in INTERRUPT_PHRASES
+                        and (self.authorize is None or self.authorize(result.speaker))):
                     self.stopped.set()
                     return True
         except (OSError, RuntimeError, ValueError) as error:
