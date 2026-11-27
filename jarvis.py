@@ -1,5 +1,6 @@
 import ctypes as c
 from ctypes import wintypes as w
+from pathlib import PureWindowsPath
 import re
 import subprocess
 import sys
@@ -16,17 +17,48 @@ def normalize(value):
 MOVE = re.compile(
     r"(?:oye jarvis[, ]+)?(?:mueve|pon|coloca) "
     r"(?:(?:la )?(?:ventana|pestana)(?: de)? )?"
-    r"(.+?) (?:a|en) (?:la )?(?:mitad )?(izquierda|derecha)"
+    r"(?:(?:el|la) )?(.+?) (?:a|en) (?:la )?(?:mitad )?(izquierda|derecha)"
     r"(?: (?:de|del) (?:la |el )?(?:pantalla|monitor) (\d+))?"
 )
-ALIASES = {"vscode": "visual studio code", "vs code": "visual studio code"}
+APP_NAMES = {
+    "code": ("Visual Studio Code", "VSCode", "VS Code"),
+    "chrome": ("Google Chrome", "Chrome"),
+    "msedge": ("Microsoft Edge", "Edge"),
+    "firefox": ("Firefox", "Mozilla Firefox"),
+    "explorer": ("Explorador de archivos", "Explorador", "File Explorer"),
+    "notepad": ("Bloc de notas", "Notepad"),
+    "calc": ("Calculadora", "Calculator"),
+    "calculatorapp": ("Calculadora", "Calculator"),
+    "winword": ("Microsoft Word", "Word"),
+    "excel": ("Microsoft Excel", "Excel"),
+    "powerpnt": ("Microsoft PowerPoint", "PowerPoint"),
+}
 
 
 def parse_move(command):
     match = MOVE.fullmatch(normalize(command))
     if match:
         title, side, screen = match.groups()
-        return ALIASES.get(title, title), side, int(screen) if screen else None
+        return title, side, int(screen) if screen else None
+
+
+def app_label(executable):
+    return APP_NAMES.get(normalize(executable), (executable,))[0]
+
+
+def matching_windows(windows, query):
+    exact = [
+        window for window in windows
+        if query == normalize(window[1])
+        or query in {
+            normalize(name)
+            for name in (window[2], *APP_NAMES.get(normalize(window[2]), ()))
+            if name
+        }
+    ]
+    if exact:
+        return exact
+    return [window for window in windows if query in normalize(window[1])]
 
 
 def half(bounds, side):
@@ -47,6 +79,15 @@ class MonitorInfo(c.Structure):
 class Desktop:
     def __init__(self):
         self.api = c.WinDLL("user32", use_last_error=True)
+        self.kernel = c.WinDLL("kernel32", use_last_error=True)
+        self.kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+        self.kernel.OpenProcess.restype = w.HANDLE
+        self.kernel.QueryFullProcessImageNameW.argtypes = [
+            w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD),
+        ]
+        self.kernel.QueryFullProcessImageNameW.restype = w.BOOL
+        self.kernel.CloseHandle.argtypes = [w.HANDLE]
+        self.kernel.CloseHandle.restype = w.BOOL
         self.window_callback = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
         self.monitor_callback = c.WINFUNCTYPE(
             w.BOOL, w.HMONITOR, w.HDC, c.POINTER(w.RECT), w.LPARAM
@@ -56,6 +97,7 @@ class Desktop:
             "EnumDisplayMonitors": ([w.HDC, c.POINTER(w.RECT), self.monitor_callback, w.LPARAM], w.BOOL),
             "GetMonitorInfoW": ([w.HMONITOR, c.POINTER(MonitorInfo)], w.BOOL),
             "EnumWindows": ([self.window_callback, w.LPARAM], w.BOOL),
+            "GetWindowThreadProcessId": ([w.HWND, c.POINTER(w.DWORD)], w.DWORD),
             "IsWindowVisible": ([w.HWND], w.BOOL),
             "GetWindowTextLengthW": ([w.HWND], c.c_int),
             "GetWindowTextW": ([w.HWND, w.LPWSTR, c.c_int], c.c_int),
@@ -91,15 +133,33 @@ class Desktop:
             raise c.WinError(c.get_last_error())
         return screens
 
+    def executable(self, pid):
+        process = self.kernel.OpenProcess(0x1000, False, pid)
+        if not process:
+            return ""
+        try:
+            path = c.create_unicode_buffer(32768)
+            size = w.DWORD(len(path))
+            if self.kernel.QueryFullProcessImageNameW(process, 0, path, c.byref(size)):
+                return PureWindowsPath(path.value).stem
+            return ""
+        finally:
+            self.kernel.CloseHandle(process)
+
     def windows(self):
         windows = []
+        executables = {}
 
         @self.window_callback
         def collect(handle, _data):
             if self.api.IsWindowVisible(handle):
                 title = c.create_unicode_buffer(self.api.GetWindowTextLengthW(handle) + 1)
                 if self.api.GetWindowTextW(handle, title, len(title)):
-                    windows.append((handle, title.value))
+                    pid = w.DWORD()
+                    self.api.GetWindowThreadProcessId(handle, c.byref(pid))
+                    if pid.value not in executables:
+                        executables[pid.value] = self.executable(pid.value)
+                    windows.append((handle, title.value, executables[pid.value]))
             return True
 
         if not self.api.EnumWindows(collect, 0):
@@ -113,14 +173,14 @@ class Desktop:
         if screen not in screens:
             return "No encontré esa pantalla. Escribe «pantallas» para ver las disponibles."
 
-        matches = [(handle, name) for handle, name in self.windows() if title in normalize(name)]
+        matches = matching_windows(self.windows(), title)
         if not matches:
             return f"No encontré una ventana que coincida con «{title}»."
         if len(matches) > 1:
-            names = "\n".join(f"  {name}" for _, name in matches)
+            names = "\n".join(f"  {name}" for _, name, _ in matches)
             return f"Encontré varias ventanas. Repite la orden con un título más específico:\n{names}"
 
-        handle, name = matches[0]
+        handle, name, _ = matches[0]
         if self.api.IsZoomed(handle) or self.api.IsIconic(handle):
             self.api.ShowWindow(handle, 9)  # SW_RESTORE
         target = half(screens[screen][0], side)
@@ -169,7 +229,7 @@ def listen():
 
 HELP = """Escribe una orden o pulsa Intro para usar el micrófono.
   Mueve la pestaña VSCode a la mitad izquierda de la pantalla 1
-  Pon la ventana de Firefox a la mitad derecha del monitor 2
+  Pon el Explorador a la mitad derecha del monitor 2
   pantallas | ventanas | ayuda | salir"""
 
 
@@ -183,7 +243,10 @@ def execute(desktop, command):
             for number, (bounds, primary) in sorted(desktop.screens().items())
         ) or "No encontré pantallas."
     if key == "ventanas":
-        return "\n".join(title for _, title in desktop.windows()) or "No encontré ventanas."
+        return "\n".join(
+            f"{app_label(executable)} · {title}" if executable else title
+            for _, title, executable in desktop.windows()
+        ) or "No encontré ventanas."
     if move := parse_move(command):
         return desktop.move(*move)
     return "Todavía no sé hacer eso. Escribe «ayuda» para ver las órdenes disponibles."

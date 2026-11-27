@@ -22,9 +22,11 @@ La consola sigue disponible con `python jarvis.py`.
 | `mueve la pestaña VSCode a la mitad izquierda de la pantalla 1` | Coloca la ventana completa de VS Code en la mitad izquierda. |
 | `pon la ventana de Firefox a la mitad derecha del monitor 2` | Coloca Firefox en la mitad derecha del monitor 2. |
 | `pantallas` | Muestra los identificadores de monitores detectados. |
-| `ventanas` | Muestra los títulos de las ventanas visibles. |
+| `ventanas` | Muestra los programas abiertos y los títulos de sus ventanas. |
 | `ayuda` | Muestra los ejemplos disponibles. |
 | `salir` | Cierra el asistente. |
+
+Puedes decir «mueve Chrome a la izquierda» o «pon el Explorador a la derecha». JARVIS busca el nombre del programa, su ejecutable o el título de la ventana. Si hay varias coincidencias, usa un título más concreto de la lista de **Ventanas**.
 
 Si omites el número de pantalla, JARVIS usa la principal. El cálculo respeta el área de trabajo para dejar sitio a la barra de tareas.
 
