@@ -15,7 +15,7 @@ def normalize(value):
 
 
 POSITION = r"izquierda|izquieda|derecha|pantalla completa|maximiza(?:do|da)?"
-SCREEN = r"(?: (?:(?:de|en) (?:la |el )?)?(?:pantalla|monitor) (\d+))?"
+SCREEN = r"(?: (?:(?:de|en) (?:la |el )?|del )?(?:pantalla|monitor) (\d+))?"
 MOVE = re.compile(
     r"(?:oye jarvis[, ]+)?(?:mueve|pon|coloca) "
     r"(?:(?:la )?(?:ventana|pestana)(?: de)? )?"
