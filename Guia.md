@@ -101,12 +101,14 @@ Get-Content diagnostico-voz.json -Encoding UTF8
 
 ## Pruebas con tu micrófono
 
+Antes de probar órdenes, registra tres muestras en **Perfiles de voz**. Haz las pruebas de llamadas y de voces ajenas con tus ajustes habituales.
+
 | Prueba manual | Resultado esperado |
 | --- | --- |
 | Selecciona tu micrófono, activa la escucha permanente y cierra el panel con la X. Di «Jarvis, abre Spotify» de corrido. | Spotify se abre y JARVIS responde con el panel oculto. |
 | Di «Jarvis», espera un segundo y di «abre la calculadora». Repite dejando pasar más de seis segundos. | La primera orden se ejecuta. La segunda necesita volver a decir «Jarvis». |
 | Con el panel oculto, pide «Jarvis, ayuda», di «ventanas» y luego «sí», «repite» y «no». | JARVIS da ayuda hablada, conserva el tema y termina la conversación. |
-| Con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «la segunda» cuando enumere las opciones. | Elige la ventana anunciada y envía la solicitud normal de cierre. |
+| Con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «Me refiero a la opción dos» cuando enumere las opciones. Abre **Confirmar acción de voz** en la bandeja e introduce el código. | La ventana anunciada permanece abierta hasta la confirmación local. Después recibe la solicitud normal de cierre. |
 | Con tus altavoces activos, interrumpe un tramo de una respuesta larga diciendo «Jarvis, para». Repite con el control de la bandeja. | La respuesta se corta y el altavoz no provoca órdenes de escritorio por realimentación. |
 | En Discord y WhatsApp, compara la calidad de la voz con JARVIS pausado y activo. Repite con Automática, WASAPI y, si procede, MME y DirectSound. | Comprueba si la llamada reproduce distorsión y busca pérdidas de bloques en el registro. Repite si cambias de auricular o controlador. |
 | Registra tres muestras propias y prueba órdenes de otra persona en la sala y desde una llamada. | JARVIS bloquea al hablante ajeno en la activación y durante una conversación. Comprueba también falsos rechazos de tu voz. |
