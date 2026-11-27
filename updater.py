@@ -68,7 +68,8 @@ try {
     $restored = $false
     if ($replaced -and (($null -eq $newApp) -or $newApp.HasExited)) {
         try {
-            [IO.File]::Replace($backup, $target, $null)
+            [IO.File]::Replace($backup, $target, ($staged + '.failed'))
+            Remove-Item -LiteralPath ($staged + '.failed') -ErrorAction SilentlyContinue
             $restored = $true
         } catch { $detail += $nl + 'Restauración: ' + $_.Exception.ToString() }
     }

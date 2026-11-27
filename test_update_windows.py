@@ -82,8 +82,8 @@ class PackagedUpdateTest(unittest.TestCase):
         helper = self.helper(folder, target, staged, 2147483647)
         out, err = helper.communicate(timeout=100)
         self.assertEqual(helper.returncode, 1)
-        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), previous_hash)
         log = (folder / "JARVIS/actualizacion.log").read_text(encoding="utf-8-sig")
+        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), previous_hash, log)
         self.assertIn("Abrir la nueva versión", log)
         self.assertIn(str(target), log)
 
