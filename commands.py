@@ -38,6 +38,10 @@ ACTIONS = {
     "centra": "center", "centrar": "center",
 }
 SYSTEM_COMMANDS = {
+    "apaga el ordenador": "shutdown", "apaga el equipo": "shutdown", "apaga el pc": "shutdown",
+    "apagar el ordenador": "shutdown", "apagar el equipo": "shutdown",
+    "reinicia el ordenador": "restart", "reinicia el equipo": "restart", "reinicia el pc": "restart",
+    "reiniciar el ordenador": "restart", "reiniciar el equipo": "restart",
     "muestra el escritorio": "desktop", "mostrar escritorio": "desktop",
     "escritorio": "desktop",
     "minimiza todo": "minimize_all", "minimiza todas las ventanas": "minimize_all",
@@ -52,6 +56,7 @@ SYSTEM_COMMANDS = {
     "reproduce musica": "play_pause", "reproducir o pausar": "play_pause",
     "siguiente cancion": "next_track", "anterior cancion": "previous_track",
     "captura de pantalla": "screenshot", "recorte de pantalla": "screenshot",
+    "captura toda la pantalla": "screenshot_full", "haz una captura de toda la pantalla": "screenshot_full",
 }
 SPOKEN_NUMBERS = ("uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez")
 SPOKEN_SCREEN = re.compile(r" (?:pantalla|monitor) (" + "|".join(SPOKEN_NUMBERS) + r")$")
@@ -59,7 +64,8 @@ LIST_COMMANDS = {
     "ventanas": "windows", "lista ventanas": "windows",
     "aplicaciones": "apps", "programas": "apps", "lista aplicaciones": "apps",
     "pantallas": "screens", "monitores": "screens", "lista pantallas": "screens",
-    "ayuda": "help", "comandos": "help", "salir": "exit",
+    "ayuda": "help", "ayudame": "help", "dime como puedes ayudarme": "help",
+    "que puedes hacer": "help", "comandos": "help", "salir": "exit",
 }
 
 
@@ -144,6 +150,7 @@ abre configuración · abre administrador de tareas · abre descargas
 abre documentos · abre explorador · abre calculadora
 escritorio · vista de tareas · minimiza todo · restaura todas las ventanas
 captura de pantalla · bloquea el equipo
+apaga el equipo · reinicia el equipo · cancela
 
 MULTIMEDIA
 sube volumen · baja volumen · silencia o activa el sonido

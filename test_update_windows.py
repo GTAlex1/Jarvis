@@ -87,15 +87,21 @@ class PackagedUpdateTest(unittest.TestCase):
 
     @unittest.skipUnless(os.getenv("JARVIS_TEST_LEGACY_EXE"), "Requiere el ejecutable publicado de 0.4.1")
     def test_direct_upgrade_with_the_0_4_1_updater(self):
-        old_exe = Path(os.environ["JARVIS_TEST_LEGACY_EXE"])
-        self.assertEqual(hashlib.sha256(old_exe.read_bytes()).hexdigest(),
-                         "59ffff20d6d47348cba9941b4930fb10e177a553605fd15c749722d1dc1e148d")
-        # Exercise the exact helper shipped with the previous release.
+        self.exercise_direct_upgrade("JARVIS_TEST_LEGACY_EXE", "0.4.1",
+                                     "59ffff20d6d47348cba9941b4930fb10e177a553605fd15c749722d1dc1e148d",
+                                     closes_with_window=True)
+
+    @unittest.skipUnless(os.getenv("JARVIS_TEST_PREVIOUS_EXE"), "Requiere el ejecutable publicado de 0.6.4")
+    def test_compatible_replacement_from_0_6_4(self):
+        self.exercise_direct_upgrade("JARVIS_TEST_PREVIOUS_EXE", "0.6.4",
+                                     "eff32df9466a49bc8ce72cdba542d07dcc97e2859e010876ea60fbee093257a4")
+
+    def exercise_direct_upgrade(self, env, version, digest, closes_with_window=False):
+        old_exe = Path(os.environ[env])
+        self.assertEqual(hashlib.sha256(old_exe.read_bytes()).hexdigest(), digest)
         legacy = {}
-        old_source = subprocess.check_output(
-            ["git", "show", "27aa10deca5ed2bb12b4c75075be9ced48554a98:updater.py"],
-        )
-        exec(compile(old_source, "updater-0.4.1.py", "exec"), legacy)
+        old_source = subprocess.check_output(["git", "show", f"v{version}:updater.py"])
+        exec(compile(old_source, f"updater-{version}.py", "exec"), legacy)
         self.assertLessEqual(Path("dist/JARVIS.exe").stat().st_size, legacy["MAX_SIZE"])
 
         folder = Path(tempfile.mkdtemp(prefix="JARVIS actualización directa "))
@@ -108,11 +114,14 @@ class PackagedUpdateTest(unittest.TestCase):
         old = subprocess.Popen([str(target)], env=dict(os.environ, JARVIS_UPDATE_RECEIPT=str(receipt)))
         helper = None
         try:
-            self.wait_until(lambda: receipt.exists() and receipt.read_text(encoding="utf-8") == "0.4.1")
+            self.wait_until(lambda: receipt.exists() and receipt.read_text(encoding="utf-8") == version)
             self.wait_until(lambda: any(exe == target.stem for _, _, exe in desktop.windows()))
             helper = self.helper(folder, target, staged, old.pid, legacy["INSTALL"])
-            hwnd = next(hwnd for hwnd, _, exe in desktop.windows() if exe == target.stem)
-            self.assertTrue(desktop.api.PostMessageW(hwnd, 0x0010, 0, 0))
+            if closes_with_window:
+                hwnd = next(hwnd for hwnd, _, exe in desktop.windows() if exe == target.stem)
+                self.assertTrue(desktop.api.PostMessageW(hwnd, 0x0010, 0, 0))
+            else:
+                subprocess.run(["taskkill", "/PID", str(old.pid), "/T", "/F"], capture_output=True, check=True)
             old.wait(timeout=30)
             _, stderr = helper.communicate(timeout=100)
             self.assertEqual(helper.returncode, 0, stderr.decode("utf-8", errors="replace"))

@@ -93,6 +93,8 @@ class ResidentLogicTest(unittest.TestCase):
 
         resident = Resident.__new__(Resident)
         resident.root = Mock()
+        resident.revision = 0
+        resident.pending_approval = resident.power_job = None
         resident.installing = resident.update_busy = True
         resident.finish_update(None, None)
         resident.root.quit.assert_called_once_with()

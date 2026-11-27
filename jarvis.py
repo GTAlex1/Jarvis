@@ -10,7 +10,8 @@ import unicodedata
 from commands import HELP, clean, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
 from command_language import rank_targets
-from voice_authorization import LocalApproval, sensitive_intent
+from permissions import ALLOW, BLOCK, classify
+from voice_authorization import ExitAction, LocalApproval, PowerAction, RejectedAction
 
 
 def normalize(value):
@@ -247,7 +248,10 @@ class Desktop:
             if approximate:
                 matches = rank_targets(title, apps, lambda item: (item[0],))
             if not matches:
-                return f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
+                message = f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
+                if voice:
+                    raise ValueError(message)
+                return message
             if len(matches) > 1 or approximate:
                 names = "\n".join(f"  {name}" for name, _ in matches)
                 heading = "Aplicaciones posibles" if approximate else "Encontré varias aplicaciones"
@@ -355,7 +359,7 @@ class Desktop:
         shortcuts = {
             "desktop": (0x5B, 0x44), "task_view": (0x5B, 0x09),
             "minimize_all": (0x5B, 0x4D), "restore_all": (0x5B, 0x10, 0x4D),
-            "screenshot": (0x5B, 0x10, 0x53),
+            "screenshot": (0x5B, 0x10, 0x53), "screenshot_full": (0x5B, 0x2C),
             "volume_up": (0xAF,), "volume_down": (0xAE,), "mute": (0xAD,),
             "play_pause": (0xB3,), "next_track": (0xB0,), "previous_track": (0xB1,),
         }
@@ -369,7 +373,8 @@ class Desktop:
         labels = {
             "desktop": "alternar el escritorio", "task_view": "abrir la vista de tareas",
             "minimize_all": "minimizar todas las ventanas", "restore_all": "restaurar las ventanas minimizadas en conjunto",
-            "screenshot": "seleccionar un recorte de pantalla", "volume_up": "subir un paso el volumen",
+            "screenshot": "seleccionar un recorte de pantalla", "screenshot_full": "guardar una captura de pantalla",
+            "volume_up": "subir un paso el volumen",
             "volume_down": "bajar un paso el volumen", "mute": "alternar el silencio",
             "play_pause": "alternar reproducción y pausa", "next_track": "pasar a la siguiente pista",
             "previous_track": "volver a la pista anterior",
@@ -377,24 +382,30 @@ class Desktop:
         return f"Envié a Windows la orden de {labels[action]}."
 
 
-def execute(desktop, command, conversational=False, selection=None, require_approval=False):
+def execute(desktop, command, conversational=False, selection=None, policy=None, approved=False):
     parsed = parse(command)
     if not parsed:
         return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
     action, *args = parsed
     target = {"selection": selection} if selection is not None else {}
-    if conversational and require_approval:
+    if policy is not None:
         target["voice"] = True
+    category = classify(parsed, normalize(selection[0]) if action == "open" and selection else "")
     try:
-        if require_approval and sensitive_intent(
-            parsed, normalize(selection[0]) if action == "open" and selection else "",
-        ):
-            if action == "close":
-                window = desktop.select_window(args[0], selection, voice=True)
-                return LocalApproval(SelectedCommand(command, TargetOption(window[1], window)),
-                                     f"Cerrar la ventana «{window[1]}»")
-            pending = SelectedCommand(command, TargetOption(selection[0], selection)) if selection else command
-            return LocalApproval(pending, command.capitalize())
+        if policy is not None and not approved:
+            method = policy.method(category)
+            if method == BLOCK:
+                return RejectedAction("Esa acción está bloqueada en Seguridad y permisos.", "politica")
+            if method != ALLOW:
+                if action == "close":
+                    window = desktop.select_window(args[0], selection, voice=True)
+                    chosen = SelectedCommand(command, TargetOption(window[1], window))
+                    return LocalApproval(chosen, f"Cerrar la ventana «{window[1]}»", method, category)
+                chosen = SelectedCommand(command, TargetOption(selection[0], selection)) if selection else command
+                label = "Salir de JARVIS" if action == "exit" else command.capitalize()
+                return LocalApproval(chosen, label, method, category)
+        if category == "power":
+            return PowerAction(args[0])
         if action == "help":
             return HELP
         if action == "screens":
@@ -418,12 +429,14 @@ def execute(desktop, command, conversational=False, selection=None, require_appr
         if action == "system":
             return desktop.system_action(*args)
         if action == "exit":
+            if policy is not None:
+                return ExitAction()
             return "Usa «Salir de JARVIS» en la bandeja o escribe «salir»."
         return desktop.window_action(action, *args, **target)
     except AmbiguousTarget as error:
         return error.clarification if conversational else str(error)
     except ValueError as error:
-        return str(error)
+        return RejectedAction(str(error), "destino_o_entrada") if policy is not None else str(error)
 
 
 def main():
@@ -453,7 +466,8 @@ def console(assistant):
                 continue
             if parse(command) == ("exit",):
                 return 0
-            print(assistant.execute(command))
+            result = assistant.execute(command)
+            print("Usa el panel de JARVIS para apagar o reiniciar." if isinstance(result, PowerAction) else result)
         except (EOFError, KeyboardInterrupt):
             return 0
         except (OSError, subprocess.TimeoutExpired) as error:

@@ -1,26 +1,33 @@
 """Own the desktop session, tray and updater independently of the command panel."""
 from collections import deque
 from concurrent.futures import Future
-from hmac import compare_digest
 from dataclasses import replace
 from queue import Empty, SimpleQueue
+from subprocess import SubprocessError
 import sys
 from threading import Thread
 from time import monotonic
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
+import json
+from pathlib import Path
 
 from assistant import Assistant
-from commands import parse
+from commands import clean, parse
+from permissions import BUTTON, CODE, HOTKEY, VERBAL, classify
+from security_dialog import SecurityDialog
 from dialogue import Clarification, SelectedCommand
 from preferences import (microphone_enabled, save_voice_settings, set_microphone,
-                         set_startup, starts_with_windows, voice_settings)
+                         set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings)
 from speaker_dialog import SpeakerDialog
-from voice_authorization import LocalApproval, PendingApproval
+from voice_authorization import (ApprovalAnswer, ExitAction, LocalApproval, PendingApproval,
+                                 PowerAction, PowerScheduled, RejectedAction, UNVERIFIED)
 from windows_protection import ProfileStore
 from updater import VERSION, acknowledge_startup, install_update, latest_update
 from voice_service import STATE_LABELS, VoiceService
 from windows_tray import WindowsTray, show_running_instance, single_instance
+from voice_diagnostics import LOG, configure as configure_log
+from windows_actions import perform_power
 
 
 class Resident:
@@ -39,6 +46,11 @@ class Resident:
         self.microphone = microphone_enabled()
         self.autostart = starts_with_windows()
         self.voice_options = voice_settings()
+        self.policy = security_settings()
+        self.security_dialog = None
+        self.revision = 0
+        self.power_job = None
+        configure_log()
         self.profile_store = ProfileStore()
         self.profile_error = ""
         self.speaker_dialog = None
@@ -57,7 +69,8 @@ class Resident:
             lambda result: self.defer(self.show_test, result),
             lambda speaker: self.defer(self.cancel_pending, speaker),
         )
-        self.voice.set_profiles(self.profiles)
+        self.voice.set_security(self.policy.biometrics)
+        self.voice.set_profiles(self.profiles, self.profile_error)
         self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
         root.protocol("WM_DELETE_WINDOW", self.hide)
 
@@ -82,7 +95,7 @@ class Resident:
             return
         if self.panel is None:
             self.panel = self.create_panel(
-                self.root, self.submit, self.update_clicked, self.packaged, self.open_voice_settings,
+                self.root, self.submit, self.update_clicked, self.packaged, self.open_voice_settings, self.open_security,
             )
             self.refresh_update()
             self.panel.voice_status(*self.voice_status)
@@ -108,8 +121,9 @@ class Resident:
             ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
             ("Ajustes de voz…", False, self.open_voice_settings),
             ("Perfiles de voz…", False, self.open_speakers),
+            ("Seguridad y permisos…", False, self.open_security),
             ("Confirmar acción de voz…", False, self.confirm_voice),
-            ("Detener respuesta de voz", False, self.cancel_voice),
+            ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
             ("Salir de JARVIS", False, self.quit),
         )
@@ -127,11 +141,11 @@ class Resident:
         desired = not self.microphone
         set_microphone(desired)
         self.microphone = desired
+        self.invalidate_voice()
         self.configure_voice()
 
     def configure_voice(self):
         if not self.microphone or not self.voice_options.enabled:
-            self.pending_approval = None
             self.show_voice_status("disabled" if self.microphone else "muted", "")
         self.voice.configure(self.voice_options, self.microphone)
 
@@ -140,7 +154,7 @@ class Resident:
 
     def save_voice(self, options):
         save_voice_settings(options)
-        self.pending_approval = None
+        self.invalidate_voice()
         self.voice_options = options
         self.configure_voice()
 
@@ -152,23 +166,50 @@ class Resident:
             lambda: self.voice.test_progress,
         )
 
+    def open_security(self):
+        if self.security_dialog is not None and self.security_dialog.window.winfo_exists():
+            self.security_dialog.window.lift()
+            return
+        self.security_dialog = SecurityDialog(self.root, self.policy, self.save_security, self.open_speakers)
+
+    def save_security(self, policy):
+        # This is only a local UI callback. Commands cannot invoke it.
+        save_security_settings(policy)
+        self.invalidate_voice()
+        self.policy = policy
+        self.voice.set_security(policy.biometrics)
+        LOG.info("permisos: configuración modificada desde interfaz local")
+
     def open_speakers(self):
         if self.speaker_dialog is not None and self.speaker_dialog.window.winfo_exists():
             self.speaker_dialog.window.lift()
             return
         self.speaker_dialog = SpeakerDialog(self.root, self.profiles, self.save_profiles, self.record_speaker,
-                                            self.voice.cancel_enrollment, self.profile_error)
+                                            self.voice.cancel_enrollment, self.export_diagnostics,
+                                            lambda: self.voice_options.speaker_threshold, self.profile_error)
 
     def save_profiles(self, profiles):
         self.profile_store.save(profiles)
+        self.invalidate_voice()
         self.profiles = tuple(profiles)
         self.profile_error = ""
-        self.pending_approval = None
         self.voice.set_profiles(self.profiles)
 
-    def record_speaker(self, progress, done):
+    def record_speaker(self, progress, done, minimum):
         self.voice.record_speaker(lambda message: self.defer(progress, message),
-                                  lambda sample, message: self.defer(done, sample, message))
+                                  lambda sample, message: self.defer(done, sample, message), minimum)
+
+    def export_diagnostics(self, parent):
+        target = filedialog.asksaveasfilename(parent=parent, defaultextension=".json",
+                                             initialfile="jarvis-biometria.json",
+                                             filetypes=[("Diagnóstico JSON", "*.json")])
+        if target:
+            snapshot = {"version": VERSION, "captura": self.voice.current_route,
+                        "biometria": dict(self.voice.last_biometrics),
+                        "verificacion_activa": self.policy.biometrics,
+                        "umbral": self.voice_options.speaker_threshold,
+                        "estado_perfiles": "ilegible" if self.profile_error else ("disponibles" if self.profiles else "ausentes")}
+            Path(target).write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def show_catalog(self, *catalog):
         if self.panel is not None:
@@ -199,6 +240,7 @@ class Resident:
             self.stop()
 
     def stop(self):
+        self.invalidate_voice()
         self.closing = True
         self.root.quit()
 
@@ -213,6 +255,11 @@ class Resident:
         return False
 
     def submit(self, command):
+        if parse(command) in (("system", "shutdown"), ("system", "restart")):
+            if messagebox.askyesno("JARVIS", "¿Programar la operación dentro de diez segundos?",
+                                   default="no", parent=self.root):
+                self.panel.reply(self.schedule_power(PowerAction(parse(command)[1])).message)
+            return True
         if self.is_exit_command(command):
             return False
         future = self.assistant.submit(command)
@@ -229,81 +276,187 @@ class Resident:
     def finish_command(self, completed):
         self.panel.reply(self.command_result(completed))
 
-    def can_use_voice(self, speaker):
-        return (self.microphone and self.voice_options.enabled and
-                any(profile.id == speaker for profile in self.profiles))
+    def can_use_voice(self, speaker, revision=None):
+        if self.closing or not self.microphone or not self.voice_options.enabled:
+            return False
+        if revision is not None and revision != self.revision:
+            return False
+        return (any(profile.id == speaker for profile in self.profiles) if self.policy.biometrics
+                else speaker == UNVERIFIED)
 
     def request_voice(self, command, speaker):
         reply = Future()
-        self.defer(self.dispatch_voice, command, speaker, reply)
+        self.defer(self.dispatch_voice, command, speaker, reply, self.revision)
         return reply
 
-    def dispatch_voice(self, command, speaker, reply):
-        if not self.can_use_voice(speaker):
+    def dispatch_voice(self, command, speaker, reply, revision=None):
+        if not self.can_use_voice(speaker, revision):
+            LOG.info("permisos: rechazada motivo=voz_no_autorizada_o_sesion_cambiada")
             reply.cancel()
             return
         if not reply.set_running_or_notify_cancel():
             return
-        if isinstance(command, str) and parse(command) == ("exit",):
-            if self.installing:
-                reply.set_result("La actualización cerrará JARVIS cuando termine la descarga.")
+        revision = self.revision if revision is None else revision
+        if isinstance(command, ApprovalAnswer):
+            request = self.pending_approval
+            if not request or request.speaker != speaker or not request.matches(VERBAL, command.ticket):
+                LOG.info("permisos: confirmación verbal sin solicitud vigente")
+                reply.set_result("No hay una acción pendiente para esa confirmación.")
+            elif command.yes:
+                self.approve(request, reply)
             else:
-                self.require_confirmation(LocalApproval(command, "Salir de JARVIS"), speaker, reply)
+                self.clear_approval()
+                LOG.info("permisos: confirmación verbal cancelada")
+                reply.set_result("Acción cancelada.")
             return
-        title = command.option.label if isinstance(command, SelectedCommand) else command
+        self.clear_approval()
+        source = command.command if isinstance(command, SelectedCommand) else command
+        option = command.option.label if isinstance(command, SelectedCommand) else ""
+        title = option or source
         self.record_voice(f"VOZ · {title}", "you")
-        guard = lambda: self.can_use_voice(speaker)
-        future = self.assistant.submit_voice(command, guard=guard)
-        future.add_done_callback(lambda completed: self.defer(self.finish_voice, completed, speaker, reply))
+        self.run_voice_action(command, speaker, revision, reply)
 
-    def finish_voice(self, completed, speaker, reply):
-        if not self.can_use_voice(speaker):
-            reply.set_result("")
+    def run_voice_action(self, command, speaker, revision, reply, approved=False):
+        guard = lambda: self.can_use_voice(speaker, revision)
+        future = self.assistant.submit_voice(command, approved=approved, guard=guard, policy=self.policy)
+        source = command.command if isinstance(command, SelectedCommand) else command
+        selected = clean(command.option.label) if isinstance(command, SelectedCommand) else ""
+        category = classify(parse(source) or ("unknown",), selected)
+        future.add_done_callback(lambda completed: self.defer(self.finish_voice, completed, speaker, reply,
+                                                               revision, category))
+
+    def finish_voice(self, completed, speaker, reply, revision, category):
+        if not self.can_use_voice(speaker, revision):
+            if reply is not None:
+                reply.set_result("")
             return
         result = self.command_result(completed)
         if isinstance(result, LocalApproval):
             self.require_confirmation(result, speaker, reply)
             return
-        self.record_voice(result.written if isinstance(result, Clarification) else result, "reply")
-        reply.set_result(result)
+        if isinstance(result, ExitAction):
+            if self.installing:
+                result = RejectedAction("Hay una actualización instalándose.", "actualizacion")
+            else:
+                LOG.info("permisos: ejecutada categoría=close")
+                if reply is not None:
+                    reply.set_result("Cerrando JARVIS.")
+                self.quit()
+                return
+        if isinstance(result, PowerAction):
+            result = self.schedule_power(result, speaker, revision)
+        if isinstance(result, RejectedAction):
+            LOG.info("permisos: rechazada categoría=%s motivo=%s", category, result.reason)
+            result = result.message
+        elif not isinstance(result, (Clarification, PowerScheduled)):
+            LOG.info("permisos: orden despachada categoría=%s", category)
+        shown = result.written if isinstance(result, Clarification) else result.message if isinstance(result, PowerScheduled) else result
+        self.record_voice(shown, "reply")
+        if reply is not None:
+            reply.set_result(result)
+
+    def clear_approval(self):
+        request, self.pending_approval = self.pending_approval, None
+        if request and request.request.method == HOTKEY:
+            self.tray.clear_hotkey()
 
     def require_confirmation(self, result, speaker, reply):
-        self.pending_approval = PendingApproval.create(result, speaker, monotonic())
-        self.record_voice(f"Pendiente de confirmación local · {result.description}", "reply")
-        reply.set_result(result)
-
-    def cancel_pending(self, speaker):
-        if self.pending_approval and self.pending_approval.speaker == speaker:
+        self.clear_approval()
+        request = PendingApproval.create(result, speaker, monotonic(), self.revision)
+        self.pending_approval = request
+        if result.method == HOTKEY and not self.tray.set_hotkey(lambda: self.approve_hotkey(request)):
             self.pending_approval = None
+            LOG.info("permisos: rechazada categoría=%s motivo=atajo_no_disponible", result.category)
+            reply.set_result("El atajo Control, Alt y F10 está ocupado. Revisa Seguridad y permisos.")
+            return
+        LOG.info("permisos: pendiente categoría=%s método=%s", result.category, result.method)
+        self.record_voice(f"Pendiente de confirmación · {result.description}", "reply")
+        reply.set_result(replace(result, ticket=request.ticket))
 
-    def cancel_voice(self):
-        self.pending_approval = None
-        self.voice.stop_speech()
+    def request_valid(self, request):
+        return (request is self.pending_approval and request.valid(monotonic(), self.profiles, self.revision)
+                and self.can_use_voice(request.speaker, request.revision))
+
+    def approve_hotkey(self, request):
+        if request.matches(HOTKEY, request.ticket):
+            self.approve(request)
+
+    def approve(self, request, reply=None):
+        if not self.request_valid(request):
+            if reply is not None:
+                reply.set_result("La confirmación ya caducó.")
+            return
+        self.clear_approval()
+        order = request.request.command
+        LOG.info("permisos: aprobada categoría=%s método=%s", request.request.category, request.request.method)
+        self.run_voice_action(order, request.speaker, request.revision, reply, approved=True)
 
     def confirm_voice(self):
-        request, self.pending_approval = self.pending_approval, None
-        if request is None or not request.valid(monotonic(), self.profiles) or not self.can_use_voice(request.speaker):
+        request = self.pending_approval
+        if request is None or not self.request_valid(request):
             messagebox.showinfo("JARVIS", "No hay ninguna acción de voz pendiente.", parent=self.root)
             return
-        entered = simpledialog.askstring(
-            "Confirmar acción de voz",
-            f"{request.request.description}\n\nEscribe el código {request.code} para autorizarla.",
-            parent=self.root,
-        )
-        if (entered is None or not compare_digest(entered.encode("utf-8"), request.code.encode("ascii"))
-                or not request.valid(monotonic(), self.profiles) or not self.can_use_voice(request.speaker)):
+        method = request.request.method
+        if method == CODE:
+            entered = simpledialog.askstring(
+                "Confirmar acción de voz",
+                f"{request.request.description}\n\nEscribe el código {request.code} para autorizarla.",
+                parent=self.root,
+            )
+            allowed = request.matches(CODE, request.ticket, entered)
+        elif method == BUTTON:
+            allowed = messagebox.askyesno("Confirmar acción de voz", request.request.description,
+                                          parent=self.root, default="no")
+        else:
+            messagebox.showinfo("JARVIS", "Esta acción espera el método de confirmación configurado.",
+                                parent=self.root)
             return
-        order = request.request.command
-        if isinstance(order, str) and parse(order) == ("exit",):
-            if not self.installing:
-                self.quit()
-            return
-        guard = lambda: request.valid(monotonic(), self.profiles) and self.can_use_voice(request.speaker)
-        future = self.assistant.submit_voice(order, approved=True, guard=guard)
-        future.add_done_callback(lambda completed: self.defer(self.finish_approved, completed))
+        if allowed:
+            self.approve(request)
+        elif self.pending_approval is request:
+            self.clear_approval()
+            LOG.info("permisos: rechazada categoría=%s motivo=confirmación_local", request.request.category)
 
-    def finish_approved(self, completed):
-        self.record_voice(self.command_result(completed), "reply")
+    def schedule_power(self, result, speaker=None, revision=None):
+        if self.power_job is not None:
+            return PowerScheduled("Ya hay una operación de apagado o reinicio pendiente.")
+        operation = result.operation
+        verb = "apagar" if operation == "shutdown" else "reiniciar"
+        token = object()
+        callback = lambda: self.finish_power(token, operation, speaker, revision)
+        self.power_job = token, self.root.after(10000, callback)
+        LOG.info("permisos: cuenta atrás categoría=power acción=%s", operation)
+        return PowerScheduled(f"Voy a {verb} el equipo en diez segundos. Di cancela para detener la operación.")
+
+    def finish_power(self, token, operation, speaker, revision):
+        if self.power_job is None or self.power_job[0] is not token:
+            return
+        self.power_job = None
+        if self.closing or self.installing or (speaker is not None and not self.can_use_voice(speaker, revision)):
+            LOG.info("permisos: cancelada categoría=power motivo=sesión")
+            return
+        try:
+            perform_power(operation)
+        except (OSError, ValueError, SubprocessError) as error:
+            LOG.warning("permisos: rechazada categoría=power motivo=%s", type(error).__name__)
+            self.record_voice("Windows no pudo apagar o reiniciar. Comprueba los permisos de la sesión.", "reply")
+        else:
+            LOG.info("permisos: ejecutada categoría=power acción=%s", operation)
+
+    def invalidate_voice(self):
+        self.revision += 1
+        self.clear_approval()
+        if self.power_job is not None:
+            self.root.after_cancel(self.power_job[1])
+            self.power_job = None
+            LOG.info("permisos: cancelada categoría=power")
+
+    def cancel_pending(self, speaker=None):
+        self.invalidate_voice()
+
+    def cancel_voice(self):
+        self.invalidate_voice()
+        self.voice.stop_speech()
 
     def record_voice(self, text, tag):
         if self.panel is None:
@@ -321,8 +474,9 @@ class Resident:
 
     def poll_events(self):
         self.deliver()
-        if self.pending_approval and not self.pending_approval.valid(monotonic(), self.profiles):
-            self.pending_approval = None
+        if self.pending_approval and not self.request_valid(self.pending_approval):
+            self.clear_approval()
+            LOG.info("permisos: confirmación caducada")
         if not self.closing:
             visible = self.root.state() in {"normal", "zoomed"}
             self.root.after(60 if visible else 200, self.poll_events)

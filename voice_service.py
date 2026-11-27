@@ -12,9 +12,11 @@ from speech_cancel import SpeechCancellation
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices, reject_recognition
 from voice_audio import installed_voices, speak
 from voice_diagnostics import LOG, configure as configure_log
-from speakers import ENROLLMENT_FRAMES, identify
+from biometric_audio import MESSAGES, Reason, extract, verify
+from speakers import ENROLLMENT_FRAMES
+from voice_authorization import UNVERIFIED
 from voice_recognition import (Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector,
-                               local_speaker_model, spanish_model, wake_sample)
+                               local_speaker_model, spanish_model)
 
 STATE_LABELS = {
     "disabled": "Escucha permanente desactivada",
@@ -23,6 +25,10 @@ STATE_LABELS = {
     "waiting": f"En espera · di «{WAKE_WORD}»",
     "profiles": "Registra un perfil de voz para escuchar",
     "voice_rejected": "Voz sin autorización",
+    "voice_short": "Muestra de voz insuficiente",
+    "voice_quality": "Audio insuficiente para verificar",
+    "voice_error": "Error de verificación de voz",
+    "profile_damaged": "Perfil de voz incompatible o dañado",
     "listening": "Escuchando la orden",
     "followup": "Escuchando tu respuesta",
     "processing": "Procesando voz",
@@ -60,6 +66,10 @@ class VoiceService:
         self.test_request = None
         self.testing = False
         self.profiles = ()
+        self.profile_error = False
+        self.biometrics = True
+        self.last_biometrics = {}
+        self.current_route = None
         self.speaker_model = None
         self.enrollment_request = None
         self.enrolling = False
@@ -88,13 +98,18 @@ class VoiceService:
         elif self.thread is None:
             self.notify("disabled" if microphone else "muted")
 
-    def set_profiles(self, profiles):
+    def set_profiles(self, profiles, error=False):
         self.profiles = tuple(profiles)
+        self.profile_error = bool(error)
         self.changed.set()
 
-    def record_speaker(self, on_progress, on_done):
+    def set_security(self, biometrics):
+        self.biometrics = biometrics
+        self.changed.set()
+
+    def record_speaker(self, on_progress, on_done, minimum=ENROLLMENT_FRAMES):
         with self.test_lock:
-            self.enrollment_request = (on_progress, on_done)
+            self.enrollment_request = (on_progress, on_done, minimum)
             self.changed.set()
         self.start()
 
@@ -137,13 +152,11 @@ class VoiceService:
             self.last_state = event
             self.on_state(*event)
 
-    def recognize(self, verify=False):
+    def recognize(self):
         if self.model is None:
             self.model = spanish_model()
-        if verify and self.speaker_model is None:
-            self.speaker_model = local_speaker_model()
         self.model_used = monotonic()
-        return SpanishRecognizer(self.model, speaker_model=self.speaker_model if verify else None)
+        return SpanishRecognizer(self.model)
 
     def list_options(self):
         try:
@@ -211,9 +224,10 @@ class VoiceService:
                 self.notify("disabled" if microphone else "muted")
                 self.changed.wait()
                 continue
-            if not self.profiles:
+            if self.biometrics and (self.profile_error or not self.profiles):
                 self.model = self.speaker_model = None
-                self.notify("profiles")
+                self.notify("profile_damaged" if self.profile_error else "profiles",
+                            MESSAGES[Reason.DAMAGED if self.profile_error else Reason.MISSING])
                 self.changed.wait()
                 continue
             if self.changed.is_set():
@@ -232,39 +246,61 @@ class VoiceService:
                 self.notify("unavailable", detail)
                 self.changed.wait(RETRY_SECONDS)
 
-    def run_enrollment(self, settings, microphone, progress, done):
+    def sample(self, pcm, minimum=None):
+        if self.model is None:
+            self.model = spanish_model()
+        if self.speaker_model is None:
+            self.speaker_model = local_speaker_model()
+        self.model_used = monotonic()
+        reading = (extract(self.model, self.speaker_model, pcm) if minimum is None
+                   else extract(self.model, self.speaker_model, pcm, minimum))
+        self.last_biometrics = {
+            "calidad": reading.reason.value if reading.reason else "adecuada",
+            "voz_ms": reading.voiced_ms, "pico_porcentaje": reading.peak_percent,
+            "fotogramas": reading.sample.frames if reading.sample else 0,
+        }
+        return reading
+
+    def set_capture_diagnostics(self, capture):
+        self.current_route = {
+            "interfaz": capture.route.api, "frecuencia": capture.format.rate,
+            "canales": capture.format.channels, "formato": capture.format.dtype,
+        }
+
+    def run_enrollment(self, settings, microphone, progress, done, minimum):
         if not microphone:
             done(None, "Activa el micrófono en la bandeja antes de grabar.")
             return
         try:
             devices = input_devices(refresh=True)
-            recognizer = self.recognize(verify=True)
-            with capture_input(devices, settings.device, self.changed, interface=settings.interface,
-                               recover_interface=True) as capture:
+            selection, interface = devices.migrate(settings.device, settings.interface)
+            preferred = self.preferred_routes.get(selection, "")
+            with capture_input(devices, selection, self.changed, interface=interface,
+                               preferred=preferred, recover_interface=True) as capture:
                 if capture is None:
                     done(None, "Grabación cancelada.")
                     return
-                progress("Habla ahora durante cinco segundos.")
-                best = None
+                self.set_capture_diagnostics(capture)
+                progress("Habla ahora. Usa una frase de varios segundos.")
+                audio = bytearray()
                 deadline = monotonic() + 5
                 while not self.changed.is_set() and monotonic() < deadline:
                     pcm = capture.read()
                     self.meter = (capture.level, capture.label)
-                    if pcm and (result := recognizer.feed(pcm)) and result.speaker:
-                        if best is None or result.speaker.frames > best.frames:
-                            best = result.speaker
+                    if pcm:
+                        audio.extend(pcm)
                 if self.changed.is_set():
                     done(None, "Grabación cancelada.")
                     return
-                final = recognizer.finish()
-                if final and final.speaker and (best is None or final.speaker.frames > best.frames):
-                    best = final.speaker
-                if best is None or best.frames < ENROLLMENT_FRAMES:
-                    done(None, "Faltó voz continua. Habla varios segundos con el micrófono cerca.")
-                else:
-                    done(best, "Muestra válida.")
+                if not interface:
+                    self.preferred_routes[selection] = capture.route.legacy_key
+            reading = self.sample(bytes(audio), minimum)
+            self.last_biometrics["uso"] = "registro_o_prueba"
+            done(reading.sample, reading.message())
         except ERRORS as error:
-            done(None, f"No se pudo grabar la muestra: {error}")
+            self.last_biometrics = {"resultado": Reason.ERROR.value, "uso": "registro_o_prueba"}
+            LOG.warning("biometría: error de registro (%s)", type(error).__name__)
+            done(None, "No se pudo grabar o verificar la muestra. Comprueba el micrófono y su interfaz.")
 
     def run_capture(self, settings):
         devices = input_devices(refresh=True)
@@ -285,6 +321,7 @@ class VoiceService:
                             capture.route.api == "Windows WASAPI" or
                             len({r.api for r in capture.available_routes}) > 1
                         )
+                        self.set_capture_diagnostics(capture)
                         self.listen(capture, detector, settings, automatic=automatic)
                     return
             except DefaultInputChanged:
@@ -371,15 +408,15 @@ class VoiceService:
     def listen(self, capture, detector, settings, automatic=False):
         failures = 0
         dialogue = Dialogue(settings.speech_detail, settings.conversational)
-        exchange = Conversation(detector, lambda: self.recognize(verify=True), self.notify)
-        owner, wake_identity = None, None
+        exchange = Conversation(detector, self.recognize, self.notify)
+        owner = None
         threshold = settings.speaker_threshold / 100
         self.notify("waiting", capture.notice)
         while not self.changed.is_set():
             if self.speech_stop.is_set():
                 self.speech_stop.clear()
                 dialogue.clear()
-                owner, wake_identity = None, None
+                owner = None
                 exchange.reset()
             pcm = capture.read()
             self.meter = (capture.level, capture.label)
@@ -394,17 +431,7 @@ class VoiceService:
             try:
                 transcript = exchange.feed(pcm, now)
                 if not was_listening and exchange.active is not None:
-                    prefix = detector.activation
-                    wake = wake_sample(self.model, self.speaker_model, prefix) if (
-                        self.model is not None and isinstance(prefix, bytes) and prefix
-                    ) else None
-                    wake_identity = identify(wake, self.profiles, threshold)
-                    if wake is not None and wake_identity is None:
-                        dialogue.clear()
-                        owner = None
-                        exchange.reset()
-                        self.notify("voice_rejected", "No se autorizó la activación.")
-                        continue
+                    owner = None
             except ERRORS as error:
                 raise RecognitionError(f"Falló el reconocimiento de voz: {error}") from error
             if was_listening and exchange.active is None and transcript is None:
@@ -416,44 +443,84 @@ class VoiceService:
                     self.check_route(automatic, failures)
             if transcript is None or self.changed.is_set():
                 continue
-            speaker = identify(transcript.speaker, self.profiles, threshold, owner if following else wake_identity)
-            if speaker is None:
-                dialogue.clear()
-                owner, wake_identity = None, None
-                exchange.reset()
-                self.notify("voice_rejected", "Di una frase más larga si la muestra fue demasiado breve.")
-                continue
-            if owner != speaker:
-                dialogue.clear()
-                owner = speaker
-            if following and transcript.confidence < 0.73:
-                # Ignore uncertain background speech without reopening the wake gate.
-                continue
             capture.pause()
             self.meter = (0, capture.label)
-            self.notify("processing")
-            turn = self.interpret(transcript, dialogue, settings, now, speaker)
-            if following and not turn.accepted:
+            text = clean(transcript.text)
+            safe_stop = transcript.confidence >= 0.73 and (
+                text in STOP or text in {"deten la operacion", "cancela la orden", "no confirmo la orden"} or
+                (following and text in {"no", "no gracias", "no, gracias", "no cancela la orden"})
+            )
+            if following and transcript.confidence < 0.73 and not safe_stop:
                 capture.resume()
-                self.notify("followup")
+                exchange.listen_for_reply(now, max(0, exchange.deadline - now))
                 continue
-            if not following:
+            if safe_stop and self.on_cancel:
+                self.on_cancel(None)  # Cancelling never grants permission.
+                dialogue.clear()
+                turn = Turn(speech="De acuerdo, cancelado.", end=True)
+            elif self.biometrics:
+                self.last_biometrics = {}
+                reason, speaker = verify(self.sample, bytes(exchange.audio), exchange.activation,
+                                         self.profiles, threshold, owner)
+                self.last_biometrics.update(uso="orden", resultado=reason.value)
+                LOG.info("biometría: %s", reason.value)
+                if speaker is None:
+                    if reason == Reason.UNAUTHORIZED:
+                        dialogue.clear()
+                        owner = None
+                        self.notify("voice_rejected", MESSAGES[reason])
+                        turn = Turn(end=True, accepted=False)
+                    else:
+                        state = ("voice_short" if reason == Reason.SHORT else
+                                 "voice_error" if reason in {Reason.ERROR, Reason.MISSING} else "voice_quality")
+                        self.notify(state, MESSAGES[reason])
+                        prompt = MESSAGES[reason]
+                        if reason == Reason.SHORT and dialogue.verbal:
+                            prompt = "Necesito más voz. Di «Sí, confirma la orden», o di «cancela»."
+                        elif reason == Reason.SHORT and text == "ayuda":
+                            prompt = "Necesito más voz. Di «Dime cómo puedes ayudarme»."
+                        turn = Turn(speech=prompt, followup=True)
+                else:
+                    owner = speaker
+                    self.notify("processing")
+                    turn = self.interpret(transcript, dialogue, settings, now, speaker)
+            else:
+                owner = UNVERIFIED
+                self.notify("processing")
+                turn = self.interpret(transcript, dialogue, settings, now, owner)
+            if self.changed.is_set():
+                return
+            if following and not turn.accepted and not turn.end:
+                capture.resume()
+                exchange.listen_for_reply(now, max(0, exchange.deadline - now))
+                continue
+            if not following and not turn.end:
                 failures = 0 if turn.accepted else failures + 1
-            warning, interrupted = self.play(turn.speech, settings, capture, speaker)
-            if self.changed.wait(PLAYBACK_GUARD_SECONDS):
+            warning, interrupted = self.play(turn.speech, settings, capture, owner)
+            if self.changed.wait(PLAYBACK_GUARD_SECONDS if turn.speech else 0):
                 return
             capture.resume()
-            exchange.reset()
+            if turn.speech or turn.accepted:
+                exchange.reset()
+            else:
+                # Keep the specific rejection visible until a new activation.
+                exchange.reset(notify=False)
             self.check_route(automatic, failures)
             if interrupted:
                 self.speech_stop.clear()
                 if self.on_cancel:
-                    self.on_cancel(speaker)
+                    self.on_cancel(None)
                 dialogue.clear()
-            elif settings.conversational and settings.volume and turn.speech and turn.accepted and not (turn.end or warning):
+                owner = None
+            elif not turn.end and not warning and (turn.followup or (
+                settings.conversational and settings.volume and turn.speech and turn.accepted
+            )):
                 now = monotonic()
-                dialogue.keep(now, settings.context_seconds)
+                if not turn.followup or not dialogue.expires:
+                    dialogue.keep(now, settings.context_seconds)
                 exchange.listen_for_reply(now, min(settings.reply_seconds, settings.context_seconds))
+            else:
+                owner = None
             if warning:
                 LOG.warning("síntesis: %s", warning)
 
@@ -465,7 +532,7 @@ class VoiceService:
     def interpret(self, transcript, dialogue, settings, now, speaker=None):
         if speaker is None:
             return Turn(end=True, accepted=False)
-        if not transcript.understood:
+        if not transcript.understood or (dialogue.verbal and transcript.confidence < 0.73):
             LOG.info("reconocimiento: orden descartada por baja confianza (%.2f)", transcript.confidence)
             return Turn(speech="No he entendido la orden.", accepted=False)
         text = normalize_order(transcript.text)
@@ -474,7 +541,7 @@ class VoiceService:
             return Turn(speech="La orden no se oyó con claridad. Repítela, por favor.", accepted=False)
         if self.on_cancel and clean(text) in STOP:
             self.on_cancel(speaker)
-        if settings.conversational:
+        if settings.conversational or dialogue.verbal:
             turn = dialogue.turn(text, now)
         elif parse(text):
             turn = Turn(command=text)
@@ -505,10 +572,8 @@ class VoiceService:
                 # to microphone frames. The command recognizer stays out.
                 model = self.model if capture is not None and WAKE_WORD.casefold() not in part.casefold() else None
                 try:
-                    authorize = (lambda sample: identify(sample, self.profiles,
-                                                        settings.speaker_threshold / 100, speaker)) if speaker else None
-                    token = SpeechCancellation(self.changed, self.speech_stop, capture, model,
-                                               self.speaker_model, authorize)
+                    # Stopping speech or a pending operation is always safe.
+                    token = SpeechCancellation(self.changed, self.speech_stop, capture, model)
                 except ERRORS as error:
                     LOG.warning("reconocimiento: no se pudo iniciar la interrupción por voz: %s", error)
                     model = None

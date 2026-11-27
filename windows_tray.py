@@ -10,6 +10,7 @@ MUTEX_NAME = "Local\\" + WINDOW_CLASS
 OPEN_MESSAGE = WINDOW_CLASS + ".Open"
 WM_TRAY = 0x8001  # WM_APP + 1
 WM_NULL = 0
+WM_HOTKEY = 0x0312
 WM_CONTEXTMENU = 0x007B
 WM_RBUTTONUP = 0x0205
 WM_LBUTTONDBLCLK = 0x0203
@@ -92,6 +93,8 @@ class WindowsTray:
         self.visible = False
         self.tooltip = "JARVIS"
         self.version4 = False
+        self.hotkey = None
+        self.hotkey_id = 1000
         self.window = None
 
         user = c.WinDLL("user32", use_last_error=True)
@@ -110,6 +113,8 @@ class WindowsTray:
             ]
 
         functions = {
+            "RegisterHotKey": ([w.HWND, c.c_int, w.UINT, w.UINT], w.BOOL),
+            "UnregisterHotKey": ([w.HWND, c.c_int], w.BOOL),
             "RegisterWindowMessageW": ([w.LPCWSTR], w.UINT),
             "RegisterClassW": ([c.POINTER(WindowClass)], w.ATOM),
             "UnregisterClassW": ([w.LPCWSTR, w.HINSTANCE], w.BOOL),
@@ -193,6 +198,9 @@ class WindowsTray:
             self.defer(self.show)
         elif message == self.taskbar_created:
             self.defer(self.restore_icon)
+        elif message == WM_HOTKEY:
+            if self.hotkey is not None and wp == self.hotkey_id:
+                self.defer(self.hotkey)
         elif message == WM_TRAY:
             event = lp & 0xFFFF
             if event in (NIN_SELECT, NIN_KEYSELECT, WM_LBUTTONDBLCLK):
@@ -231,7 +239,21 @@ class WindowsTray:
         finally:
             self.user.DestroyMenu(menu)
 
+    def set_hotkey(self, callback):
+        self.clear_hotkey()
+        self.hotkey_id = 1000 + (self.hotkey_id - 999) % 30000
+        if not self.user.RegisterHotKey(self.window, self.hotkey_id, 0x4003, 0x79):  # Ctrl+Alt+F10
+            return False
+        self.hotkey = callback
+        return True
+
+    def clear_hotkey(self):
+        if self.hotkey is not None:
+            self.user.UnregisterHotKey(self.window, self.hotkey_id)
+            self.hotkey = None
+
     def close(self):
+        self.clear_hotkey()
         if self.retry is not None:
             self.root.after_cancel(self.retry)
         data = self.notify_data()

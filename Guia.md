@@ -66,13 +66,13 @@ En 0.6.3, Automática podía recurrir a ASIO y WASAPI usaba bloques de captura d
 
 El filtro de paso alto del flujo local atenúa corriente continua y ruido grave. Para el eco de las respuestas se mantiene el bloqueo del reconocedor de órdenes durante la síntesis, el descarte de bloques y el margen al reanudar. Una cancelación acústica completa necesita una referencia de reproducción sincronizada que el conjunto actual de WASAPI, MME y DirectSound no proporciona de forma uniforme. Los auriculares Bluetooth clásicos también pueden cambiar de perfil al abrir el micrófono. La causa específica de la distorsión en una llamada requiere comparar el mismo equipo con JARVIS apagado y encendido. [Modo compartido de Windows](https://learn.microsoft.com/windows/win32/coreaudio/exclusive-mode-streams) · [Audio Bluetooth clásico](https://learn.microsoft.com/es-es/windows-hardware/drivers/bluetooth/bluetooth-classic-audio)
 
-## Verificación del hablante
+## Verificación del hablante en 0.6.4
 
 Vosk usa el modelo local `vosk-model-spk-0.4` de 13 MiB aproximadamente, distribuido bajo Apache 2.0. Cada perfil necesita tres muestras coherentes. Se comparan las dos mejores similitudes de coseno por perfil y se exige margen entre perfiles. El valor predeterminado 72/100 es operativo, no una tasa biométrica certificada. La duración y la calidad de tu voz se comprueban físicamente. Una activación breve puede armar la escucha, con ejecución bloqueada hasta verificar la orden. Cada turno de una conversación debe corresponder al mismo perfil confirmado.
 
-Se guarda en `%LOCALAPPDATA%\JARVIS\perfiles-voz.dat` una lista versionada de firmas, cifrada e íntegra con DPAPI para el usuario actual. El servicio bloquea la ejecución si no hay perfiles válidos. Se verifica la autorización por segunda vez al despachar la acción. Las operaciones sensibles requieren que el usuario abra la bandeja y escriba un código de un solo uso antes de 25 segundos. La ventana concreta se revalida al ejecutar. El audio de enrolamiento permanece en memoria.
+Se guarda en `%LOCALAPPDATA%\JARVIS\perfiles-voz.dat` una lista versionada de firmas, cifrada e íntegra con DPAPI para el usuario actual. En 0.6.4 se bloqueaba la ejecución si no había perfiles válidos y se exigía un código local para las operaciones sensibles. Consulta [la revisión 0.6.4.1](#bug-064-001-y-validación-de-0641) para conocer las opciones actuales. La ventana concreta se revalida al ejecutar. El audio de enrolamiento permanece en memoria.
 
-La firma de voz admite falsos rechazos y falsos positivos, especialmente ante reproducciones, imitaciones y síntesis. La confirmación local es independiente de la voz y sigue siendo necesaria para las acciones sensibles. [Modelo de hablantes de Vosk](https://alphacephei.com/vosk/models) · [DPAPI](https://learn.microsoft.com/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)
+La firma de voz admite falsos rechazos y falsos positivos, especialmente ante reproducciones, imitaciones y síntesis. La confirmación local es independiente de la voz. [Modelo de hablantes de Vosk](https://alphacephei.com/vosk/models) · [DPAPI](https://learn.microsoft.com/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)
 
 ## Elección del reconocimiento
 
@@ -108,11 +108,11 @@ Antes de probar órdenes, registra tres muestras en **Perfiles de voz**. Haz las
 | Selecciona tu micrófono, activa la escucha permanente y cierra el panel con la X. Di «Jarvis, abre Spotify» de corrido. | Spotify se abre y JARVIS responde con el panel oculto. |
 | Di «Jarvis», espera un segundo y di «abre la calculadora». Repite dejando pasar más de seis segundos. | La primera orden se ejecuta. La segunda necesita volver a decir «Jarvis». |
 | Con el panel oculto, pide «Jarvis, ayuda», di «ventanas» y luego «sí», «repite» y «no». | JARVIS da ayuda hablada, conserva el tema y termina la conversación. |
-| Con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «Me refiero a la opción dos» cuando enumere las opciones. Abre **Confirmar acción de voz** en la bandeja e introduce el código. | La ventana anunciada permanece abierta hasta la confirmación local. Después recibe la solicitud normal de cierre. |
+| En **Estricto**, con dos ventanas del mismo programa abiertas, pide «Jarvis, cierra Firefox» y di «Me refiero a la opción dos» cuando enumere las opciones. Abre **Confirmar acción de voz** en la bandeja e introduce el código. | La ventana anunciada permanece abierta hasta la confirmación local. Después recibe la solicitud normal de cierre. |
 | Con tus altavoces activos, interrumpe un tramo de una respuesta larga diciendo «Jarvis, para». Repite con el control de la bandeja. | La respuesta se corta y el altavoz no provoca órdenes de escritorio por realimentación. |
 | En Discord y WhatsApp, compara la calidad de la voz con JARVIS pausado y activo. Repite con Automática, WASAPI y, si procede, MME y DirectSound. | Comprueba si la llamada reproduce distorsión y busca pérdidas de bloques en el registro. Repite si cambias de auricular o controlador. |
 | Registra tres muestras propias y prueba órdenes de otra persona en la sala y desde una llamada. | JARVIS bloquea al hablante ajeno en la activación y durante una conversación. Comprueba también falsos rechazos de tu voz. |
-| Reproduce una grabación o voz sintética de prueba y solicita una operación sensible. | La operación solo puede ejecutarse tras la confirmación local. Desmarca Micrófono para cancelar la escucha. |
+| En **Estricto**, reproduce una grabación o voz sintética de prueba y solicita una operación sensible. | La operación solo puede ejecutarse tras la confirmación local. Desmarca Micrófono para cancelar la escucha. |
 | Con el micrófono que usas normalmente, selecciona MME y luego DirectSound. En cada prueba di «abre Spotify». Repite con WASAPI y Automática. | Distingue señal, actividad de voz y palabras reconocidas. Compara la transcripción y anota interfaz y frecuencia. |
 | Con la ruta que transcriba bien, guarda los ajustes y prueba «Jarvis, abre Spotify» con el panel oculto y tus demás aplicaciones de audio abiertas. | La orden se ejecuta desde la captura física habitual. |
 | Con **Predeterminado de Windows** activo, cambia la entrada en Configuración de Windows con JARVIS escuchando. | El medidor y las siguientes órdenes pasan al nuevo dispositivo. |
@@ -140,3 +140,26 @@ La tabla completa de acciones está en [README.md](README.md#órdenes-de-windows
 Ejecuta `python -m unittest -v test_commands` para comprobar las frases de ejemplo, la selección de ventanas y la geometría. En Windows, también se crea una ventana de prueba para comprobar posiciones, minimizar, maximizar, restaurar y recibir una solicitud de cierre que la ventana puede rechazar. Las pruebas no bloquean la sesión ni cambian el volumen.
 
 El flujo de publicación ejecuta esas pruebas antes de generar el ejecutable y publicar la versión.
+
+## BUG-064-001 y validación de 0.6.4.1
+
+La prueba física de 0.6.4 completó el registro y detectó «Jarvis», pero rechazó todas las órdenes del propietario. Las pruebas de llamadas, voces ajenas y comandos naturales quedaron bloqueadas. Se reprodujeron dos defectos del código: Vosk puede devolver texto sin firma cuando faltan fotogramas de habla según su alineación, y el antiguo flujo podía vetar una orden por la firma de «Jarvis» aislada. Ambos casos se confundían con una falta de coincidencia. El disparador exacto en el equipo del informante requiere repetir las pruebas.
+
+Registro y órdenes usan ahora PCM mono a 16 kHz y el mismo extractor incremental. La firma de una orden suficiente se compara por separado. Si es breve, se permite usar el comienzo de la misma intervención solo con continuidad acústica y actividad de voz suficiente en la orden. Una pausa impide incorporar la activación. Cada turno se vuelve a verificar. Si un turno sale demasiado corto, repite la orden completa con una frase más larga, por ejemplo «Dime cómo puedes ayudarme» o «Sí, confirma la orden». Se conserva el umbral guardado y el formato cifrado de los perfiles de 0.6.4.
+
+**Perfiles de voz** distingue silencio, ruido, saturación, falta de duración y fallos de perfil o del verificador. Selecciona una fila para repetir una muestra. Después de las tres muestras, **Comprobar registro** pide una cuarta frase. Para un perfil existente, selecciónalo y pulsa **Probar perfil seleccionado**. El diagnóstico JSON incluye versión, interfaz, formato, métricas de calidad y estado del perfil. Los resultados de política se registran por categoría en `voz.log`.
+
+### Confirmaciones y compatibilidad
+
+Las reglas de [Seguridad y permisos](README.md#seguridad-y-permisos) se aplican a órdenes de voz. Una confirmación ocupa una única solicitud durante 25 segundos como máximo. La aprobación verbal también está sujeta al tiempo de seguimiento y, si la biometría está activa, a la comprobación del hablante. Cambiar los ajustes o perfiles, pausar la escucha y cancelar revoca las solicitudes pendientes. Cualquiera puede pronunciar una cancelación de alta confianza durante una operación pendiente, ya que solo impide ejecutarla.
+
+Para apagar o reiniciar, JARVIS mantiene la cuenta atrás en la aplicación y luego solicita a Windows el cierre normal. Así evita la opción de cierre forzado asociada a una espera positiva del comando nativo. Windows conserva el control sobre los permisos y avisos de guardado. Windows Hello se evaluó. Se aplaza porque el cliente de escritorio necesita integrar y validar el adaptador WinRT para una ventana nativa, además de gestionar las configuraciones en las que Hello no está disponible. [Referencia de apagado de Windows](https://learn.microsoft.com/es-es/windows-server/administration/windows-commands/shutdown) · [Integración de verificación local](https://learn.microsoft.com/es-es/windows/win32/api/userconsentverifierinterop/nf-userconsentverifierinterop-iuserconsentverifierinterop-requestverificationforwindowasync)
+
+El actualizador de 0.6.4 y anteriores solo analiza tres componentes. El primer salto a 0.6.4.1 requiere reemplazar el archivo con JARVIS cerrado. Los datos en el Registro y en `%LOCALAPPDATA%\JARVIS` se conservan. La revisión añade el descubrimiento de versiones de cuatro componentes para futuras actualizaciones.
+
+### Comprobaciones de la revisión
+
+- **Automatizadas.** Hay casos con audio sintético del mismo y de otro sintetizador, cortes breves, activación continua y con pausa, ruido, silencio y saturación. Windows comprueba DPAPI, perfil ilegible, políticas y caducidad, sustitución de los binarios de 0.4.1 y 0.6.4, y recuperación del ejecutable anterior. Las pruebas de apagado simulan la llamada al sistema.
+- **Físicas pendientes.** Prueba primero el perfil conservado con «Jarvis, ayuda» y con una orden larga, seguida de «sí» o «repite». Compara una sola frase con una activación seguida de pausa. Si falla, prueba o renueva el perfil en la misma interfaz de audio y exporta el diagnóstico.
+- **Físicas pendientes.** En Libertad con biometría activa, cierra una ventana de prueba, captura toda la pantalla y cancela una cuenta atrás de reinicio. Comprueba que una persona presente, otra en una llamada y una grabación no causen operaciones imprevistas. La biometría sigue admitiendo falsos positivos y negativos.
+- **Físicas pendientes.** Compara la distorsión con JARVIS activo y pausado durante llamadas de Discord y WhatsApp en MME, DirectSound y WASAPI. Comprueba los nombres en inglés y las órdenes naturales una vez superado el bloqueo biométrico.

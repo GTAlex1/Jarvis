@@ -5,6 +5,7 @@
 | Versión | Objetivo |
 | --- | --- |
 | 0.6.4 | Reconocimiento avanzado y seguridad de voz. |
+| 0.6.4.1 | Corrección de BUG-064-001, diagnóstico biométrico y perfiles de seguridad. Validación física pendiente. |
 | 0.6.5 | Detección universal de aplicaciones. |
 | 0.6.5.1 | Infraestructura de betatesters, diagnósticos, feedback y canales de actualización. |
 | 0.6.5.2 | Nexora Hub, sugerencias, votaciones y panel de administración. |

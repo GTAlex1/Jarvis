@@ -5,7 +5,9 @@ from threading import Event
 import unittest
 from unittest.mock import Mock, patch
 
+from biometric_audio import Reading
 from commands import HELP, parse
+from permissions import SecurityPolicy
 from dialogue import Clarification, Dialogue, SelectedCommand, TargetOption, split_speech
 from jarvis import Desktop, execute
 from preferences import VoiceSettings
@@ -176,6 +178,7 @@ class VoiceIntegrationTest(unittest.TestCase):
 
         capture.read.side_effect = read
         with (patch.object(service, "recognize", side_effect=recognizers),
+              patch.object(service, "sample", return_value=Reading(None, sample=SAMPLE)),
               patch("voice_service.speak") as speak,
               patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
             service.listen(capture, detector, VoiceSettings())
@@ -190,6 +193,9 @@ class VoiceIntegrationTest(unittest.TestCase):
         resident.closing = resident.installing = False
         resident.panel = None
         resident.microphone = True
+        resident.policy = SecurityPolicy("Estricto")
+        resident.revision = 0
+        resident.pending_approval = None
         resident.voice_options = VoiceSettings(enabled=True)
         resident.profiles = (PROFILE,)
         resident.voice_log = deque(maxlen=24)

@@ -4,7 +4,8 @@ import re
 from textwrap import wrap
 
 from commands import SPOKEN_NUMBERS, WAKE_WORD, clean, parse
-from voice_authorization import LocalApproval
+from permissions import BUTTON, CODE, HOTKEY, VERBAL
+from voice_authorization import ApprovalAnswer, LocalApproval, PowerScheduled
 
 STOP = {"para", "parate", "detente", "cancela", "cancelar", "cancelalo"}
 INTERRUPT_PHRASES = tuple(f"{WAKE_WORD.casefold()} {verb}" for verb in ("para", "cancela", "detente"))
@@ -68,9 +69,10 @@ class SelectedCommand:
 @dataclass(frozen=True)
 class Turn:
     speech: str = ""
-    command: str | SelectedCommand | None = None
+    command: str | SelectedCommand | ApprovalAnswer | None = None
     accepted: bool = True
     end: bool = False
+    followup: bool = False
 
 
 def split_speech(text, limit=145):
@@ -123,6 +125,7 @@ class Dialogue:
         self.position = 0
         self.help_topic = False
         self.pending = None
+        self.verbal = None
         self.option_offset = 0
 
     def keep(self, now, seconds):
@@ -135,11 +138,24 @@ class Dialogue:
 
     def abandon_question(self):
         self.pending = None
+        self.verbal = None
 
     def answer(self, command, result):
+        if isinstance(result, PowerScheduled):
+            self.clear()
+            return Turn(speech=result.message, followup=True)
         if isinstance(result, LocalApproval):
             self.clear()
-            return Turn(speech="Esa acción necesita confirmación. Abre Confirmar acción de voz en la bandeja.", end=True)
+            if result.method == VERBAL:
+                self.verbal = result.ticket
+                self.last = f"¿Seguro? {result.description}. Di sí para confirmar o cancela."
+                return Turn(speech=self.last, followup=True)
+            instructions = {
+                HOTKEY: "Pulsa Control, Alt y F10 para confirmar.",
+                BUTTON: "Confirma la acción en la bandeja.",
+                CODE: "Abre Confirmar acción de voz en la bandeja e introduce el código.",
+            }
+            return Turn(speech=instructions[result.method], end=True)
         if isinstance(result, Clarification):
             self.clear()
             if not self.enabled:
@@ -224,6 +240,16 @@ class Dialogue:
             key = "repite"
         elif key in {"no, gracias", "cancela la conversacion", "cancela la orden", "para de hablar"}:
             key = "cancela"
+        if self.verbal:
+            if key in YES | {"si confirmo", "si confirmo la orden", "si, confirma la orden", "confirmo la orden"}:
+                ticket = self.verbal
+                self.clear()
+                return Turn(command=ApprovalAnswer(ticket, True))
+            if key in NO | STOP | {"no, cancela la orden", "no cancela la orden"}:
+                ticket = self.verbal
+                self.clear()
+                return Turn(command=ApprovalAnswer(ticket, False))
+            return Turn(speech="Di sí para confirmar esa acción, o cancela.", followup=True)
         if key in STOP or (key in NO and self.last):
             self.clear()
             return Turn(speech="De acuerdo.", end=True)

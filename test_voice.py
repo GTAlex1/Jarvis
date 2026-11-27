@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 from threading import Event
 import unittest
+from biometric_audio import Reading
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -63,7 +64,8 @@ class VoiceServiceTest(unittest.TestCase):
             self.assertEqual(capture.read.call_count, 1)
 
         with (patch.object(service, "recognize", return_value=recognizer),
-              patch("voice_service.speak", side_effect=playback),
+              patch.object(service, "sample", return_value=Reading(None, sample=SAMPLE)),
+              patch.object(service, "model", None), patch("voice_service.speak", side_effect=playback),
               patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
             service.listen(capture, detector, settings)
 

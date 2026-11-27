@@ -93,6 +93,14 @@ class SpanishRecognizer:
             return None
         return self.transcript(self.recognizer.Result())
 
+    def feed_sample(self, pcm):
+        if pcm and self.recognizer.AcceptWaveform(pcm):
+            return VoiceSample.from_result(json.loads(self.recognizer.Result()))
+        return None
+
+    def finish_sample(self):
+        return VoiceSample.from_result(json.loads(self.recognizer.FinalResult()))
+
     def partial(self):
         return json.loads(self.recognizer.PartialResult()).get("partial", "").strip()
 
@@ -191,14 +199,6 @@ def local_speaker_model():
         raise OSError("No se pudo iniciar la verificación de voz.") from error
 
 
-def wake_sample(model, speaker_model, pcm):
-    if not pcm:
-        return None
-    recognizer = SpanishRecognizer(model, speaker_model=speaker_model)
-    recognizer.recognizer.AcceptWaveform(pcm + bytes(RATE * SAMPLE_BYTES // 3))
-    return VoiceSample.from_result(json.loads(recognizer.recognizer.FinalResult()))
-
-
 class Conversation:
     def __init__(self, detector, recognizer, notify):
         self.detector = detector
@@ -207,18 +207,25 @@ class Conversation:
         self.active = None
         self.deadline = 0.0
         self.following = False
+        self.audio = bytearray()
+        self.activation = b""
 
     def listen_for_reply(self, now, seconds):
         self.active = self.recognizer()
+        self.audio.clear()
+        self.activation = b""
         self.deadline = now + seconds
         self.following = True
         self.notify("followup")
 
-    def reset(self):
+    def reset(self, notify=True):
         self.active = None
         self.following = False
         self.detector.reset()
-        self.notify("waiting")
+        self.audio.clear()
+        self.activation = b""
+        if notify:
+            self.notify("waiting")
 
     def feed(self, pcm, now):
         if self.active is None:
@@ -228,8 +235,15 @@ class Conversation:
             self.deadline = now + TIMEOUT
             self.notify("listening")
             self.active = self.recognizer()
+            self.audio[:] = tail
+            activation = self.detector.activation
+            self.activation = activation if isinstance(activation, bytes) else b""
             return self.active.feed(tail)
         if now >= self.deadline:
             self.reset()
             return None
+        self.audio.extend(pcm)
+        # Bound a pathological streaming utterance and split follow-up turns
+        # after their endpoint so a prior speaker never feeds later decisions.
+        del self.audio[:-int(10 * RATE * SAMPLE_BYTES)]
         return self.active.feed(pcm)

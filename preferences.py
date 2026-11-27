@@ -132,3 +132,24 @@ def save_voice_settings(settings):
 
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "VoiceSettings", 0, winreg.REG_SZ, json.dumps(asdict(settings)))
+
+
+def security_settings():
+    from permissions import BLOCK, CATEGORIES, SecurityPolicy
+
+    raw = read_value(SETTINGS_KEY, "SecuritySettings", None)
+    if raw is None:
+        # 0.6.4 required codes. Preserve that protection for existing voice users.
+        legacy = read_value(SETTINGS_KEY, "VoiceSettings", None)
+        return SecurityPolicy("Estricto" if legacy is not None else "Equilibrado")
+    try:
+        return SecurityPolicy.from_saved(json.loads(raw))
+    except (TypeError, ValueError, KeyError):
+        return SecurityPolicy("Personalizado", True, dict.fromkeys(CATEGORIES, BLOCK))
+
+
+def save_security_settings(policy):
+    import winreg
+
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "SecuritySettings", 0, winreg.REG_SZ, json.dumps(policy.serialized()))

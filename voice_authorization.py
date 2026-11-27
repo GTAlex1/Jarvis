@@ -1,12 +1,31 @@
-"""Bounded local approval requests for voice-initiated desktop actions."""
+"""Single-use session-bound approvals, independent of desktop UI."""
 from dataclasses import dataclass
-from secrets import randbelow
+from hmac import compare_digest
+from secrets import randbelow, token_urlsafe
+
+from permissions import CODE
+
+UNVERIFIED = "<biometrics-disabled>"
 
 
 @dataclass(frozen=True)
 class LocalApproval:
     command: object
     description: str
+    method: str = CODE
+    category: str = "close"
+    ticket: str = ""
+
+
+@dataclass(frozen=True)
+class ApprovalAnswer:
+    ticket: str
+    yes: bool
+
+
+@dataclass(frozen=True)
+class PowerAction:
+    operation: str
 
 
 @dataclass(frozen=True)
@@ -15,17 +34,36 @@ class PendingApproval:
     speaker: str
     code: str
     expires: float
+    ticket: str
+    revision: int = 0
 
     @classmethod
-    def create(cls, request, speaker, now):
-        return cls(request, speaker, f"{randbelow(1000000):06d}", now + 25)
+    def create(cls, request, speaker, now, revision=0):
+        code = f"{randbelow(1000000):06d}" if request.method == CODE else ""
+        return cls(request, speaker, code, now + 25, token_urlsafe(16), revision)
 
-    def valid(self, now, profiles):
-        return now < self.expires and any(profile.id == self.speaker for profile in profiles)
+    def valid(self, now, profiles, revision=None):
+        return (now < self.expires and (revision is None or revision == self.revision)
+                and (self.speaker == UNVERIFIED or any(profile.id == self.speaker for profile in profiles)))
+
+    def matches(self, method, ticket, code=""):
+        return (self.request.method == method and self.ticket == ticket and
+                (method != CODE or isinstance(code, str) and
+                 compare_digest(self.code.encode("ascii"), code.encode("utf-8"))))
 
 
-def sensitive_intent(intent, selected_label=""):
-    administration = {"administrador de tareas", "task manager", "configuracion", "settings", "ajustes", "windows update"}
-    return (intent[0] in {"close", "exit"} or
-            intent == ("system", "lock") or intent == ("system", "screenshot") or
-            (intent[0] == "open" and (intent[1] in administration or selected_label in administration)))
+
+@dataclass(frozen=True)
+class PowerScheduled:
+    message: str
+
+
+@dataclass(frozen=True)
+class RejectedAction:
+    message: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ExitAction:
+    pass

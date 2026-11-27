@@ -1,5 +1,14 @@
 # Cambios de JARVIS
 
+## 0.6.4.1
+
+- **BUG-064-001**. Se elimina el veto biométrico de la palabra de activación aislada y se comparte la extracción con el registro. Las órdenes se verifican con su propio audio. Una orden breve puede incorporar la activación de la misma intervención si es continua. Se distinguen insuficiencia, falta de coincidencia y problemas de audio o perfil.
+- Los perfiles muestran calidad por muestra, permiten repetir una grabación, exigen una comprobación independiente antes del alta y permiten comprobar perfiles guardados. Diagnóstico exportable sin audio ni firmas.
+- Seguridad y permisos desde panel y bandeja. Libertad, Equilibrado, Estricto y Personalizado, con biometría independiente. Confirmaciones específicas, caducables y de un solo uso.
+- Apagado y reinicio con cuenta atrás cancelable. Captura de pantalla completa mediante Windows. Se respetan los avisos de trabajo sin guardar.
+- Admite cuatro componentes en nuevas actualizaciones. Para adoptar 0.6.4.1 desde una versión anterior, cierra JARVIS y reemplaza el ejecutable. Se conservan perfiles y preferencias.
+- La verificación con la voz del propietario, el rechazo de terceros reales y las llamadas de Discord o WhatsApp siguen pendientes de validación física.
+
 ## 0.6.4
 
 - Verificación local del hablante para activaciones y turnos. Registro, renombrado, renovación y eliminación de perfiles con tres muestras. Firmas cifradas para la cuenta de Windows con DPAPI.

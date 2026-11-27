@@ -16,7 +16,7 @@ MUTED = "#9aadc7"
 FONT = "Segoe UI"
 
 
-def create_panel(root, submit_command, check_update, packaged, open_voice_settings):
+def create_panel(root, submit_command, check_update, packaged, open_voice_settings, open_security):
     root.title("JARVIS")
     root.geometry("980x640")
     root.minsize(650, 460)
@@ -141,6 +141,7 @@ def create_panel(root, submit_command, check_update, packaged, open_voice_settin
         button(toolbar, command.capitalize(), lambda key=command: run(key)).pack(fill="x", pady=3)
 
     button(toolbar, "Ajustes de voz", open_voice_settings).pack(fill="x", pady=3)
+    button(toolbar, "Seguridad y permisos", open_security).pack(fill="x", pady=3)
 
     if packaged:
         update_status = tk.StringVar(value=f"Versión {VERSION}")

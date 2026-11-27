@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 import sys
 import unittest
 
+from biometric_audio import Reading
+from permissions import SecurityPolicy
 from command_language import normalize_order, phonetic_score
 from commands import parse
 from dialogue import Clarification, Dialogue
@@ -72,7 +74,8 @@ class SpeakerSecurityTest(unittest.TestCase):
         capture.read.side_effect = read
         detector = Mock(feed=Mock(return_value=b"tail"), activation=b"")
         decoder = Mock(feed=Mock(return_value=Transcript("cierra spotify", 0.99, VoiceSample(OTHER_VECTOR, 90))))
-        with patch.object(service, "recognize", return_value=decoder):
+        with (patch.object(service, "recognize", return_value=decoder),
+              patch.object(service, "sample", return_value=Reading(None, sample=VoiceSample(OTHER_VECTOR, 90)))):
             service.listen(capture, detector, VoiceSettings(enabled=True))
         service.submit.assert_not_called()
         self.assertEqual(service.last_state[0], "voice_rejected")
@@ -94,53 +97,64 @@ class SpeakerSecurityTest(unittest.TestCase):
         decoders = [Mock(feed=Mock(return_value=Transcript("ayuda", 0.99, SAMPLE))),
                     Mock(feed=Mock(return_value=Transcript("cierra spotify", 0.99, VoiceSample(OTHER_VECTOR, 90))))]
         with (patch.object(service, "recognize", side_effect=decoders),
+              patch.object(service, "sample", side_effect=[Reading(None, sample=SAMPLE),
+                                                         Reading(None, sample=VoiceSample(OTHER_VECTOR, 90))]),
               patch("voice_service.speak"),
               patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
             service.listen(capture, detector, VoiceSettings(enabled=True))
         service.submit.assert_called_once_with("ayuda", PROFILE.id)
         self.assertEqual(service.last_state[0], "voice_rejected")
 
-    def test_short_wake_is_provisional_and_a_mismatched_wake_blocks_an_order(self):
+    def test_activation_does_not_short_circuit_the_independent_command_check(self):
         service = VoiceService(Mock(), Mock(), Mock())
         service.profiles = (PROFILE,)
-        service.model = object()
+        reply = Future()
+        reply.set_result("Prueba completada")
+        service.submit.return_value = reply
         capture = Mock(level=20, label="simulada", notice="")
+
         def read():
             if capture.read.call_count == 1:
                 return bytes(1600)
             service.changed.set()
             return None
+
         capture.read.side_effect = read
         detector = Mock(feed=Mock(return_value=b"tail"), activation=bytes(1600))
-        decoder = Mock(feed=Mock(return_value=Transcript("abre spotify", 0.99, SAMPLE)))
+        decoder = Mock(feed=Mock(return_value=Transcript("abre spotify", 0.99)))
         with (patch.object(service, "recognize", return_value=decoder),
-              patch("voice_service.monotonic", return_value=1.0),
-              patch("voice_service.wake_sample", return_value=VoiceSample(OTHER_VECTOR, 67))):
-            service.listen(capture, detector, VoiceSettings(enabled=True))
-        service.submit.assert_not_called()
-        self.assertEqual(service.last_state, ("voice_rejected", "No se autorizó la activación."))
+              patch.object(service, "sample", return_value=Reading(None, sample=SAMPLE)) as verify,
+              patch.object(service, "play", return_value=("", False)),
+              patch("voice_service.PLAYBACK_GUARD_SECONDS", 0)):
+            service.listen(capture, detector, VoiceSettings(enabled=True, conversational=False))
+        verify.assert_called_once_with(b"tail")
+        service.submit.assert_called_once_with("abre spotify", PROFILE.id)
+
+
+def resident_fixture():
+    resident = Resident.__new__(Resident)
+    resident.root = Mock()
+    resident.closing = resident.installing = False
+    resident.microphone = True
+    resident.profiles = (PROFILE,)
+    resident.voice_options = VoiceSettings(enabled=True)
+    resident.pending_approval = resident.power_job = None
+    resident.tray = Mock()
+    resident.revision = 0
+    resident.policy = SecurityPolicy("Estricto")
+    resident.assistant = Mock()
+    resident.panel = None
+    resident.events = SimpleQueue()
+    resident.voice_log = deque()
+    return resident
 
 
 class ApprovalTest(unittest.TestCase):
-    def resident(self):
-        resident = Resident.__new__(Resident)
-        resident.root = Mock()
-        resident.closing = resident.installing = False
-        resident.microphone = True
-        resident.profiles = (PROFILE,)
-        resident.voice_options = VoiceSettings(enabled=True)
-        resident.pending_approval = None
-        resident.assistant = Mock()
-        resident.panel = None
-        resident.events = SimpleQueue()
-        resident.voice_log = deque()
-        return resident
-
     def test_sensitive_execution_is_deferred_with_a_stable_window_target(self):
         desktop = Desktop.__new__(Desktop)
         desktop.windows = lambda: [(2, "Spotify", "spotify")]
         desktop.api = Mock()
-        pending = execute(desktop, "cierra spotify", conversational=True, require_approval=True)
+        pending = execute(desktop, "cierra spotify", conversational=True, policy=SecurityPolicy("Estricto"))
         self.assertIsInstance(pending, LocalApproval)
         desktop.api.PostMessageW.assert_not_called()
         self.assertEqual(pending.command.option.target[0], 2)
@@ -151,7 +165,7 @@ class ApprovalTest(unittest.TestCase):
         desktop.api.PostMessageW.assert_not_called()
 
     def test_voice_yes_cannot_approve_and_local_code_is_single_use(self):
-        resident = self.resident()
+        resident = resident_fixture()
         local = LocalApproval("bloquea el equipo", "Bloquear Windows")
         reply = Future()
         resident.require_confirmation(local, PROFILE.id, reply)
@@ -163,16 +177,20 @@ class ApprovalTest(unittest.TestCase):
             resident.confirm_voice()
         resident.assistant.submit_voice.assert_not_called()
         self.assertIsNone(resident.pending_approval)
-        resident.pending_approval = request
+        resident.require_confirmation(local, PROFILE.id, Future())
+        request = resident.pending_approval
         with patch("resident.simpledialog.askstring", return_value=request.code):
             resident.confirm_voice()
         resident.assistant.submit_voice.assert_called_once()
         self.assertTrue(resident.assistant.submit_voice.call_args.kwargs["approved"])
         self.assertIsNone(resident.pending_approval)
+        with patch("resident.messagebox.showinfo"), patch("resident.simpledialog.askstring", return_value=request.code):
+            resident.confirm_voice()
+        resident.assistant.submit_voice.assert_called_once()
 
     def test_expiry_revocation_and_muting_are_enforced(self):
-        resident = self.resident()
-        request = PendingApproval(LocalApproval("salir", "Salir"), PROFILE.id, "000123", monotonic() - 1)
+        resident = resident_fixture()
+        request = PendingApproval(LocalApproval("salir", "Salir"), PROFILE.id, "000123", monotonic() - 1, "expired")
         resident.pending_approval = request
         with (patch("resident.messagebox.showinfo"), patch("resident.simpledialog.askstring") as dialog):
             resident.confirm_voice()
@@ -197,7 +215,7 @@ class LanguageTest(unittest.TestCase):
         desktop.applications = lambda: [("Rocket League", "RocketId"), ("Spotify", "SpotifyId")]
         self.assertGreater(phonetic_score("roquet lig", "Rocket League"), 0.9)
         with patch("jarvis.os.startfile", create=True) as launch:
-            result = execute(desktop, "abre roquet lig", conversational=True, require_approval=True)
+            result = execute(desktop, "abre roquet lig", conversational=True, policy=SecurityPolicy("Estricto"))
             self.assertIsInstance(result, Clarification)
             self.assertEqual([option.label for option in result.options], ["Rocket League"])
             launch.assert_not_called()
@@ -205,7 +223,7 @@ class LanguageTest(unittest.TestCase):
             dialogue.answer("abre roquet lig", result)
             selected = dialogue.turn("opción uno", 1).command
             execute(desktop, selected.command, conversational=True, selection=selected.option.target,
-                    require_approval=True)
+                    policy=SecurityPolicy("Estricto"))
             launch.assert_called_once_with(r"shell:AppsFolder\RocketId")
 
 

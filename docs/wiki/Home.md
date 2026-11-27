@@ -4,7 +4,7 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 ## Descargar y abrir
 
-1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases/latest).
+1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases).
 2. Abre el ejecutable. La X oculta el panel y **Salir de JARVIS**, en la bandeja, cierra el programa por completo.
 3. Si quieres que arranque al iniciar sesión, marca **Iniciar con Windows** en la bandeja.
 
@@ -16,13 +16,13 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja. Los modelos incluidos trabajan localmente. El audio se procesa en memoria y la entrada se descarta durante las respuestas de JARVIS. Puedes desactivar la escucha desde la bandeja y seguir usando el panel.
 
-## Seguridad de voz en 0.6.4
+## Seguridad de voz en 0.6.4.1
 
-Abre **Perfiles de voz** en la bandeja. Graba tres frases propias y guarda el perfil. Puedes renombrarlo, renovar sus muestras o eliminarlo. JARVIS verifica la voz al recibir órdenes y en cada seguimiento. Las firmas están cifradas para la cuenta local de Windows.
+**Perfiles de voz** permite comprobar muestras, repetir una grabación, renovar el perfil y exportar un diagnóstico sin audio ni firmas. La verificación distingue muestras cortas, ruido, saturación y voces que no coinciden. Si pide más voz, repite la orden en una frase completa.
 
-Las acciones sensibles requieren **Confirmar acción de voz** y el código que muestra el panel local. Grabaciones e imitaciones pueden superar la comprobación biométrica. Desmarca **Micrófono** en la bandeja para detener la escucha. Puedes seguir usando comandos escritos.
+En **Seguridad y permisos** elige Libertad, Equilibrado, Estricto o Personalizado y configura **Verificar el hablante** por separado. Libertad permite las operaciones habituales sin introducir códigos. Equilibrado solicita confirmación verbal para las acciones intermedias. Puedes decir «cancela» durante la cuenta atrás de apagado o reinicio. Desmarca **Micrófono** en la bandeja para pausar la escucha.
 
-JARVIS usa WASAPI compartida, MME y DirectSound. Para comprobar la convivencia con Discord o WhatsApp, compara una llamada con la escucha activa y pausada. La [guía](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md) separa las pruebas automatizadas de las comprobaciones físicas.
+Desde 0.6.4 o anterior, cierra JARVIS y reemplaza el ejecutable por el de 0.6.4.1 para conservar tus preferencias y perfiles. Quedan pendientes las pruebas con el propietario, otros hablantes y llamadas reales. [Políticas y actualización](https://github.com/GTAlex1/Jarvis#seguridad-y-permisos) · [Pruebas de la revisión](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md#comprobaciones-de-la-revisión)
 
 ## Conversar sin abrir el panel
 

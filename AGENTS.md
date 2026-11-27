@@ -17,7 +17,7 @@ JARVIS es un asistente de distribución pública. Windows es la plataforma actua
 
 - Separa intención, diálogo, verificación y políticas de los adaptadores de escritorio, audio, cifrado y actualización. Mantén las llamadas y dependencias de Windows en adaptadores. Adopta interfaces portables al modificar módulos existentes y conserva las rutas de Windows ya verificadas.
 - Trata la palabra de activación como un elemento reemplazable. Conserva el modelo, el identificador y los datos de pronunciación aislados del ejecutor, con el objetivo de poder personalizarlos en una versión futura.
-- Verifica cada orden y turno por voz. La biometría es probabilística y admite riesgos de reproducción y síntesis. Las acciones sensibles requieren autorización local independiente de la voz. Ante fallos de perfiles o verificación, bloquea la ejecución por voz.
+- Verifica cada orden y turno cuando la biometría esté activa. La biometría es probabilística y admite riesgos de reproducción y síntesis. Ante fallos de perfiles o verificación, aplica la política sin cambiar silenciosamente el nivel de protección.
 - Conserva las firmas biométricas cifradas para la cuenta local. Mantén el audio de registro en memoria y evita incluir firmas, nombres de perfiles y audio en diagnósticos.
 - Usa captura compartida cuando sea posible y conserva alternativas. Los cambios globales de sonido requieren autorización del usuario.
 
@@ -28,3 +28,11 @@ JARVIS es un asistente de distribución pública. Windows es la plataforma actua
 - Las pruebas automatizadas con audio sintético y dispositivos simulados deben distinguirse de las pruebas con equipos físicos, controladores, micrófonos y altavoces reales.
 - Actualiza el README, la guía y la wiki. Publica solo tras superar las pruebas automatizadas del ejecutable que se va a distribuir.
 - Consulta [ROADMAP.md](ROADMAP.md) para el alcance futuro. Implementa las versiones de la hoja de ruta cuando haya un encargo para ellas.
+
+## Permisos configurables
+
+- Trata la verificación biométrica y la política de cada categoría como ajustes independientes. La desactivación de biometría o la reducción de protección requiere consentimiento explícito en la interfaz local y no puede realizarse por voz. Los fallos de perfiles conservan la protección.
+- Usa la clasificación común de `permissions.py`. Las operaciones críticas y remotas conservan la autorización local cuando corresponda. Vincula las confirmaciones a una acción concreta, a la sesión y a una caducidad. Respeta UAC y los permisos nativos. Las categorías reservadas no habilitan funciones por sí solas.
+- Distingue muestra corta, ruido, silencio, saturación, falta de coincidencia y fallo de verificación. Permite repetir la orden y comprobar el perfil localmente. Una coincidencia sintética no valida a un hablante real.
+- Mantén los diagnósticos exportables libres de grabaciones, transcripciones, firmas y nombres de perfiles. Registra categorías y motivos de aprobación, cancelación y rechazo.
+- Desde 0.6.4.1 el actualizador reconoce hasta cuatro componentes. Los clientes anteriores requieren reemplazar manualmente el ejecutable para adoptar esta revisión. Conserva el estado local durante la sustitución.

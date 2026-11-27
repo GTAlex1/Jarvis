@@ -9,7 +9,8 @@ from commands import parse
 from audio_input import AudioFormat, PcmConverter, input_devices
 from voice_audio import installed_voices, test_synthesis
 from speech_cancel import SpeechCancellation
-from speakers import Profile, identify
+from speakers import Profile
+from biometric_audio import Reason, extract, verify
 from voice_recognition import (
     CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, local_speaker_model, spanish_model,
 )
@@ -56,28 +57,22 @@ def test_audio(folder):
 
 def verify_synthetic_speakers(model, command, same, different):
     speaker_model = local_speaker_model()
-    samples = []
-    for fixture in (command, same, different):
-        decoder = SpanishRecognizer(model, speaker_model=speaker_model)
-        audio = bytes(16000) + fixture + bytes(32000)
-        transcripts = []
-        step = CHUNK_FRAMES * SAMPLE_BYTES
-        for start in range(0, len(audio), step):
-            if result := decoder.feed(audio[start:start + step]):
-                transcripts.append(result)
-        if result := decoder.finish():
-            transcripts.append(result)
-        vectors = [result.speaker for result in transcripts if result.speaker]
-        if not vectors:
-            raise AssertionError("El modelo local no produjo una firma de voz.")
-        samples.append(max(vectors, key=lambda sample: sample.frames))
+    def read(audio):
+        return extract(model, speaker_model, audio)
 
-    enrolled = Profile("synthetic", "eSpeak", (samples[0].vector,) * 3)
-    if identify(samples[1], (enrolled,), 0.72) != enrolled.id:
+    enrolled = read(command).sample
+    if enrolled is None:
+        raise AssertionError("El modelo local no produjo una firma de voz.")
+    profile = Profile("synthetic", "eSpeak", (enrolled.vector,) * 3)
+    if verify(read, same, b"", (profile,), 0.72)[0] != Reason.ACCEPTED:
         raise AssertionError("No coincidieron frases sintéticas de la misma voz.")
-    if identify(samples[2], (enrolled,), 0.72) is not None:
+    if verify(read, different, b"", (profile,), 0.72)[0] != Reason.UNAUTHORIZED:
         raise AssertionError("Una voz sintética distinta superó el umbral.")
-
+    wake, short = same[:28400], same[28400:]
+    if verify(read, short, wake, (profile,), 0.72)[0] != Reason.ACCEPTED:
+        raise AssertionError("La frase sintética corta y continua no se verificó.")
+    if verify(read, bytes(RATE) + short, wake, (profile,), 0.72)[0] != Reason.SHORT:
+        raise AssertionError("Una orden breve tras una pausa se verificó con audio previo.")
 
 
 def dialogue_audio(model, command, stop, silence):

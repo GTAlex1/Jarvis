@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.6.4"
+VERSION = "0.6.4.1"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
@@ -112,21 +112,34 @@ def acknowledge_startup():
 
 
 def version_tuple(tag):
-    if not re.fullmatch(r"v?\d{1,6}\.\d{1,6}\.\d{1,6}", tag):
+    if not isinstance(tag, str) or not re.fullmatch(r"v?\d{1,6}\.\d{1,6}\.\d{1,6}(?:\.\d{1,6})?", tag):
         raise ValueError("La versión publicada tiene un formato desconocido.")
-    return tuple(map(int, tag.removeprefix("v").split(".")))
+    parts = tuple(map(int, tag.removeprefix("v").split(".")))
+    return parts if len(parts) == 4 else (*parts, 0)
 
 
 def latest_update():
+    # The 0.6.4 clients only parse three components at /releases/latest.
+    # This client also sees stable hotfix releases published without that flag.
     request = Request(
-        f"https://api.github.com/repos/{REPO}/releases/latest",
+        f"https://api.github.com/repos/{REPO}/releases?per_page=30",
         headers={"Accept": "application/vnd.github+json", "User-Agent": "JARVIS-Updater"},
     )
     with urlopen(request, timeout=10) as response:
-        release = json.loads(response.read(512 * 1024))
-    tag = release["tag_name"]
-    if version_tuple(tag) <= version_tuple(VERSION):
+        releases = json.loads(response.read(2 * 1024 * 1024))
+    versions = []
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        try:
+            version = version_tuple(release.get("tag_name"))
+        except ValueError:
+            continue
+        if version > version_tuple(VERSION):
+            versions.append((version, release))
+    if not versions:
         return None
+    _, release = max(versions, key=lambda item: item[0])
     for asset in release["assets"]:
         if asset["name"] != ASSET:
             continue
@@ -134,7 +147,7 @@ def latest_update():
         size = asset["size"]
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or not 0 < size <= MAX_SIZE:
             raise ValueError("GitHub no proporciona una huella SHA-256 válida para esta descarga.")
-        return tag, digest[7:], size
+        return release["tag_name"], digest[7:], size
     raise ValueError("La nueva versión todavía no contiene JARVIS.exe.")
 
 

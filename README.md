@@ -4,7 +4,7 @@ Asistente residente para controlar ventanas, aplicaciones y otras funciones de W
 
 ## Descargar y abrir
 
-1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases/latest).
+1. Descarga `JARVIS.exe` desde [GitHub Releases](https://github.com/GTAlex1/Jarvis/releases).
 2. Guarda y abre el ejecutable desde una carpeta de tu usuario. Usa una ubicación fija si activas el inicio automático.
 3. Con VS Code abierto, escribe `VSCode izquierda` y pulsa **Intro**.
 
@@ -28,13 +28,22 @@ La animación se detiene al ocultar o minimizar el panel.
 
 Spotify y los nombres de juegos deben figurar entre las aplicaciones que Windows expone o las ventanas abiertas. JARVIS acepta variantes como «cerraré Spotify» y puede sugerir una coincidencia para «roquet lig» sin ejecutarla automáticamente.
 
-### Perfiles y autorización
+### Perfiles de voz
 
-Desde **Perfiles de voz** puedes añadir, renombrar, renovar y eliminar perfiles. La exigencia de coincidencia se ajusta en **Ajustes de voz**. La captura de órdenes queda bloqueada sin perfiles válidos. El registro conserva firmas cifradas para la cuenta de Windows con DPAPI y procesa las muestras en memoria.
+Abre **Perfiles de voz** para consultar la calidad de cada muestra, repetir una grabación concreta o probar un perfil ya guardado. Completa las tres muestras y pulsa **Comprobar registro** para grabar una cuarta frase independiente antes de guardar. El resultado muestra si coincide y la puntuación frente al umbral de **Ajustes de voz**. Puedes renombrar, renovar y eliminar perfiles. Las firmas se cifran para la cuenta de Windows y el audio se procesa en memoria. **Exportar diagnóstico** guarda solo datos técnicos y de calidad.
 
-Para cerrar una ventana, bloquear Windows, capturar la pantalla, abrir herramientas administrativas o salir de JARVIS por voz, abre **Confirmar acción de voz** en la bandeja y escribe el código mostrado. El código es de un solo uso y caduca. Para detener la escucha y cancelar una solicitud pendiente, desmarca **Micrófono** o **Escucha permanente** en la bandeja. Los comandos escritos siguen disponibles.
+### Seguridad y permisos
 
-La firma de voz es probabilística. Grabaciones, imitaciones o voces sintéticas pueden parecerse a un perfil y superar la verificación. La confirmación local protege las operaciones sensibles aun en ese caso.
+Abre esta opción desde el panel o la bandeja. **Verificar el hablante** es independiente del perfil de permisos.
+
+| Perfil | Comportamiento |
+| --- | --- |
+| **Libertad** | Abre y cierra aplicaciones, gestiona ventanas, captura la pantalla y bloquea Windows por voz. Apagado y reinicio con diez segundos para cancelar. Las herramientas administrativas mantienen aprobación local. |
+| **Equilibrado** | Predeterminado en instalaciones nuevas. Confirma verbalmente las acciones de riesgo intermedio y el apagado o reinicio. Exige aprobación local para las herramientas administrativas. |
+| **Estricto** | Código temporal local para las acciones sensibles. Conserva la protección previa al actualizar una instalación con ajustes de voz guardados. |
+| **Personalizado** | Elige por categoría entre permitir, confirmar por voz, botón, atajo **Ctrl + Alt + F10**, código y bloqueo. Las categorías críticas mantienen autorización local. |
+
+Si quieres usar JARVIS a diario solo por voz, elige **Libertad** y mantén **Verificar el hablante** marcado. Cambiar a Libertad o desactivar la verificación exige aceptar el aviso local. Las llamadas y grabaciones pueden activar órdenes, y la biometría es probabilística. Di «cancela» para detener una acción pendiente, o desmarca **Micrófono** en la bandeja. Si un «sí» es demasiado breve para verificar, di «Sí, confirma la orden».
 
 ### Conversar desde la bandeja
 
@@ -51,6 +60,8 @@ Elige un micrófono y una de las interfaces disponibles para ese dispositivo. **
 Pulsa **Probar micrófono** y di «abre Spotify». La prueba distingue señal, actividad de voz y palabras reconocidas, y muestra la transcripción en directo. Si cambia la ruta del medidor, repite la frase. El registro técnico se guarda en `%LOCALAPPDATA%\JARVIS\voz.log`. El audio y la transcripción de la prueba se procesan en memoria.
 
 ## Actualizaciones
+
+**Para pasar de 0.6.4 o anterior a 0.6.4.1**, usa **Salir de JARVIS** en la bandeja y reemplaza el ejecutable por la [descarga de 0.6.4.1](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.4.1). Usa la misma carpeta y nombre si tienes activado el inicio automático. La versión anterior solo entiende números de tres componentes. El reemplazo conserva tus ajustes y perfiles.
 
 JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0. Para aplicar la actualización, JARVIS sale por completo, espera a que Windows libere el ejecutable y se vuelve a abrir. El actualizador conserva la copia anterior hasta que el nuevo arranque se confirma. Si falla, guarda el paso y el error en `%LOCALAPPDATA%/JARVIS/actualizacion.log`.
 
@@ -74,8 +85,9 @@ Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub A
 | Abrir carpetas | `abre descargas`, `abre documentos`, `abre imágenes`, `abre papelera` |
 | Ajustes de Windows | `abre configuración de pantalla`, `abre configuración de sonido`, `abre wifi`, `abre bluetooth`, `abre windows update` |
 | Escritorio y tareas | `escritorio`, `vista de tareas`, `minimiza todo`, `restaura todas las ventanas` |
-| Captura | `captura de pantalla` abre el recorte de Windows para seleccionar una zona |
+| Captura | `captura de pantalla` abre el recorte. `captura toda la pantalla` usa el atajo de guardado de Windows |
 | Bloquear sesión | `bloquea el equipo` |
+| Energía | `apaga el equipo`, `reinicia el equipo`, `cancela` durante la cuenta atrás |
 | Volumen | `sube volumen`, `baja volumen`, `silencia o activa el sonido` |
 | Música | `reproducir o pausar`, `siguiente canción`, `anterior canción` |
 | Consultar y salir | `ventanas`, `aplicaciones`, `pantallas`, `ayuda`, `salir` |
