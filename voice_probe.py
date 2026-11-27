@@ -6,7 +6,8 @@ from threading import Event
 import zlib
 
 from commands import parse
-from voice_audio import input_devices, installed_voices, test_synthesis
+from audio_input import AudioFormat, PcmConverter, input_devices
+from voice_audio import installed_voices, test_synthesis
 from voice_recognition import CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, SpanishRecognizer, WakeDetector, spanish_model
 
 
@@ -46,11 +47,15 @@ def test_audio(folder):
 def report(fixture_path, output_path):
     try:
         results = test_audio(Path(fixture_path))
+        pcm = PcmConverter(AudioFormat(48000, 2)).convert(b"\x00\x04" * 4800)
+        if len(pcm) != 1600 or not any(pcm):
+            raise AssertionError("La conversión local a mono y 16 kHz no devolvió señal.")
+        results["conversión_pcm"] = "correcto"
         devices = input_devices()
         voices = installed_voices(Event())
         if not voices or test_synthesis() <= 44:
             raise AssertionError("La síntesis de Windows no generó una señal.")
-        results.update(dispositivos_detectados=len(devices), voces_instaladas=len(voices),
+        results.update(dispositivos_detectados=len(devices.devices), voces_instaladas=len(voices),
                        síntesis_en_memoria="correcto")
         code = 0
     except Exception as error:

@@ -204,19 +204,24 @@ class Panel:
             text += f"\n{detail}"
         self.indicator.configure(text=text, fg=colors.get(state, CYAN))
 
-    def open_voice_settings(self, settings, save, refresh):
+    def open_voice_settings(self, settings, save, refresh, test, cancel_test, meter):
         if self.voice_dialog is not None and self.voice_dialog.window.winfo_exists():
             self.voice_dialog.window.lift()
             return
-        self.voice_dialog = VoiceDialog(self.root, settings, save, refresh)
+        self.voice_dialog = VoiceDialog(self.root, settings, save, refresh, test, cancel_test, meter)
 
     def voice_catalog(self, *catalog):
         if self.voice_dialog is not None and self.voice_dialog.window.winfo_exists():
             self.voice_dialog.show_catalog(*catalog)
 
 
+    def voice_test(self, result):
+        if self.voice_dialog is not None and self.voice_dialog.window.winfo_exists():
+            self.voice_dialog.test_result(result)
+
+
 class VoiceDialog:
-    def __init__(self, parent, settings, save, refresh):
+    def __init__(self, parent, settings, save, refresh, test, cancel_test, meter):
         self.window = window = tk.Toplevel(parent, bg=BG, padx=20, pady=16)
         window.title("JARVIS · Ajustes de voz")
         window.transient(parent)
@@ -224,6 +229,13 @@ class VoiceDialog:
         window.columnconfigure(1, weight=1)
         self.save = save
         self.refresh = refresh
+        self.test = test
+        self.cancel_test = cancel_test
+        self.meter = meter
+        self.meter_job = None
+        window.bind("<Map>", self.mapped)
+        window.bind("<Unmap>", self.unmapped)
+        window.bind("<Destroy>", self.destroyed)
         self.enabled = tk.BooleanVar(window, settings.enabled)
         self.volume = tk.IntVar(window, settings.volume)
         self.sensitivity = tk.IntVar(window, settings.sensitivity)
@@ -237,18 +249,56 @@ class VoiceDialog:
         self.slider("Volumen", self.volume, 0, 100, 3)
         self.slider("Sensibilidad", self.sensitivity, 1, 5, 4)
 
+        self.label("Nivel del micrófono", 5)
+        self.level = ttk.Progressbar(window, maximum=100, mode="determinate")
+        self.level.grid(row=5, column=1, sticky="ew", pady=4)
+        self.input_route = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
+        self.input_route.grid(row=6, column=0, columnspan=2, sticky="w")
         self.notice = tk.Label(window, bg=BG, fg=MUTED, wraplength=420, justify="left")
-        self.notice.grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self.notice.grid(row=7, column=0, columnspan=2, sticky="w", pady=(10, 4))
         controls = tk.Frame(window, bg=BG)
-        controls.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        controls.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.reload = ttk.Button(controls, text="Actualizar lista", command=self.load)
         self.reload.pack(side="left")
+        self.test_button = ttk.Button(controls, text="Probar micrófono", command=self.start_test)
+        self.test_button.pack(side="left", padx=8)
         ttk.Button(controls, text="Guardar", command=self.commit).pack(side="right")
         ttk.Button(controls, text="Cancelar", command=window.destroy).pack(side="right", padx=8)
 
         self.microphones = self.populate(self.microphone, "Predeterminado de Windows", [], settings.device)
         self.speakers = self.populate(self.speaker, "Automática (prioriza español)", [], settings.voice)
         self.load()
+
+    def mapped(self, event):
+        if event.widget is self.window and self.meter_job is None:
+            self.update_meter()
+
+    def unmapped(self, event):
+        if event.widget is self.window and self.meter_job is not None:
+            self.window.after_cancel(self.meter_job)
+            self.meter_job = None
+
+    def update_meter(self):
+        value, route = self.meter()
+        self.level.configure(value=value)
+        self.input_route.configure(text=route)
+        self.meter_job = self.window.after(100, self.update_meter)
+
+    def destroyed(self, event):
+        self.unmapped(event)
+        if event.widget is self.window:
+            self.cancel_test()
+
+    def start_test(self):
+        self.test_button.configure(state="disabled")
+        self.reload.configure(state="disabled")
+        self.notice.configure(text="Habla durante la prueba…")
+        self.test(self.microphones[self.microphone.get()])
+
+    def test_result(self, result):
+        self.notice.configure(text=result)
+        self.test_button.configure(state="normal")
+        self.reload.configure(state="normal")
 
     def combobox(self, label, row):
         self.label(label, row)
@@ -279,20 +329,24 @@ class VoiceDialog:
 
     def load(self):
         self.reload.configure(state="disabled")
+        self.test_button.configure(state="disabled")
         self.notice.configure(text="Buscando micrófonos y voces de Windows…")
         self.refresh()
 
     def show_catalog(self, devices, voices, error):
-        self.microphones = self.populate(
-            self.microphone, "Predeterminado de Windows", ((item.label, item.key) for item in devices),
-            self.microphones[self.microphone.get()],
-        )
+        if devices is not None:
+            selection = devices.key_for(self.microphones[self.microphone.get()])
+            self.microphones = self.populate(
+                self.microphone, "Predeterminado de Windows",
+                ((item.label, item.key) for item in devices.devices), selection,
+            )
         self.speakers = self.populate(
             self.speaker, "Automática (prioriza español)", ((f"{name} ({lang})", name) for name, lang in voices),
             self.speakers[self.speaker.get()],
         )
         self.notice.configure(text=error)
         self.reload.configure(state="normal")
+        self.test_button.configure(state="normal")
 
     def commit(self):
         try:

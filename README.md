@@ -28,7 +28,13 @@ La animación se detiene al ocultar o minimizar el panel.
 
 La detección y el reconocimiento funcionan en el equipo. El ejecutable incluye los modelos y puede usarlos sin conexión ni claves. JARVIS procesa el audio en memoria, descarta la entrada durante su propia respuesta y guarda las preferencias de voz en tu cuenta de Windows. El historial del panel muestra texto durante la sesión.
 
-Si el micrófono seleccionado se desconecta, JARVIS muestra el estado y vuelve a intentarlo. Puedes elegir otro desde **Ajustes de voz** o comprobar el permiso de micrófono para aplicaciones de escritorio en Windows.
+### Captura de micrófono en 0.6.1
+
+**Predeterminado de Windows** sigue la entrada que selecciones en Configuración de Windows. Las entradas de un mismo micrófono se agrupan cuando pueden identificarse sin ambigüedad. JARVIS prueba el formato del dispositivo y, cuando es necesario, prueba otras frecuencias o rutas de Windows (WASAPI, MME y DirectSound). Si eliges un micrófono concreto, intenta sus rutas y vuelve a buscarlo si lo desconectas.
+
+En **Ajustes de voz**, selecciona **Realtek** o **Predeterminado de Windows** y pulsa **Probar micrófono**. Habla mientras miras **Nivel del micrófono**. La prueba dura cinco segundos una vez abierta la entrada, funciona con la escucha permanente apagada y muestra la ruta, la frecuencia y si recibió señal. El interruptor **Micrófono** de la bandeja debe estar marcado.
+
+Los errores de captura y reconocimiento se registran en `%LOCALAPPDATA%\JARVIS\voz.log`. El archivo contiene detalles técnicos, como el código de error del controlador y el formato probado. El audio y las transcripciones quedan fuera del registro.
 
 ## Actualizaciones
 

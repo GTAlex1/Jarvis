@@ -37,7 +37,7 @@ class VoiceServiceTest(unittest.TestCase):
         on_state = Mock()
         service = VoiceService(Mock(return_value=reply), on_state, Mock())
         settings = VoiceSettings(enabled=True)
-        capture = Mock()
+        capture = Mock(level=0, label="Micrófono simulado")
         detector = Mock()
         detector.feed.return_value = b"tail"
         recognizer = Mock()
@@ -88,7 +88,7 @@ class VoiceServiceTest(unittest.TestCase):
                 waiting.set()
 
         service = VoiceService(Mock(), state_change, Mock())
-        capture = Mock()
+        capture = Mock(level=0, label="Micrófono simulado")
         def read():
             service.changed.wait(0.02)
             return None
@@ -98,7 +98,7 @@ class VoiceServiceTest(unittest.TestCase):
         microphone.__enter__ = Mock(return_value=capture)
         microphone.__exit__ = Mock(return_value=False)
         with (patch("voice_service.input_devices", return_value=[]),
-              patch("voice_service.Microphone", side_effect=[OSError("desconectado"), microphone]),
+              patch("voice_service.capture_input", side_effect=[OSError("desconectado"), microphone]),
               patch("voice_service.WakeDetector", return_value=Mock(feed=Mock(return_value=None))),
               patch("voice_service.RETRY_SECONDS", 0.01)):
             try:

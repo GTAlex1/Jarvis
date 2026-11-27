@@ -39,6 +39,7 @@ class Resident:
             self.request_voice,
             lambda state, detail: self.defer(self.show_voice_status, state, detail),
             lambda *catalog: self.defer(self.show_catalog, *catalog),
+            lambda result: self.defer(self.show_test, result),
         )
         self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
         root.protocol("WM_DELETE_WINDOW", self.hide)
@@ -123,11 +124,18 @@ class Resident:
 
     def open_voice_settings(self):
         self.show()
-        self.panel.open_voice_settings(self.voice_options, self.save_voice, self.voice.refresh_catalog)
+        self.panel.open_voice_settings(
+            self.voice_options, self.save_voice, self.voice.refresh_catalog,
+            self.voice.test_microphone, self.voice.cancel_test, lambda: self.voice.meter,
+        )
 
     def show_catalog(self, *catalog):
         if self.panel is not None:
             self.panel.voice_catalog(*catalog)
+
+    def show_test(self, result):
+        if self.panel is not None:
+            self.panel.voice_test(result)
 
     def show_voice_status(self, state, detail):
         if state not in {"disabled", "muted"} and (not self.microphone or not self.voice_options.enabled):

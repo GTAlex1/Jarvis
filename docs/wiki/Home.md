@@ -16,6 +16,12 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja. Los modelos incluidos trabajan localmente. El audio se procesa en memoria y la entrada se descarta durante las respuestas de JARVIS. Puedes desactivar la escucha desde la bandeja y seguir usando el panel.
 
+## Probar un micrófono
+
+Desde 0.6.1 puedes elegir **Predeterminado de Windows** para seguir la entrada de la configuración de sonido o elegir un dispositivo como **Realtek**. JARVIS negocia el formato y prueba rutas alternativas cuando falla la captura.
+
+En **Ajustes de voz**, pulsa **Probar micrófono** y habla durante cinco segundos. El medidor muestra la intensidad y el resultado indica la ruta, la frecuencia y si llegó señal. Puedes hacer la prueba con **Escucha permanente** desactivada. Si el medidor se queda a cero, consulta `%LOCALAPPDATA%\JARVIS\voz.log` para distinguir errores de captura y de reconocimiento.
+
 ## Órdenes y atajos
 
 | Orden | Resultado |
