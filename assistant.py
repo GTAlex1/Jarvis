@@ -27,7 +27,7 @@ class Assistant:
             selection = command.option.target
             command = command.command
         try:
-            return execute(self.desktop, command, conversational, selection, policy=policy, approved=approved)
+            return execute(self.desktop, command, conversational, selection, policy=policy, approved=approved, guard=guard)
         except OSError as error:
             message = f"No se pudo completar la orden: {error}"
             return RejectedAction(message, "windows") if policy is not None else message

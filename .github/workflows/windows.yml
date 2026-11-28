@@ -1,7 +1,7 @@
 name: Aplicación de Windows
 on:
   push:
-    branches: [main]
+    branches: [main, 'dev/0.6.5-universal-apps']
     paths:
       - .github/workflows/windows.yml
       - '*.py'
@@ -13,6 +13,11 @@ on:
       - ROADMAP.md
       - CHANGELOG.md
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publicar la versión tras completar la validación física
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -29,7 +34,7 @@ jobs:
       - run: python prepare_voice_model.py
       - run: python -m compileall -q .
       - name: Prueba comandos, bandeja, voz y rutas de captura sin micrófono físico
-        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul
+        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul test_app_catalog
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9'); assert version_tuple('0.6.4') < version_tuple('0.6.4.1') < version_tuple('0.6.5')"
       - name: Empaqueta JARVIS y los motores de voz
@@ -76,7 +81,7 @@ jobs:
           } finally {
             Get-Process JARVIS -ErrorAction SilentlyContinue | Stop-Process -Force
           }
-      - name: Prueba sustitución, recuperación y actualización desde 0.4.1, 0.6.4 y 0.6.4.1
+      - name: Prueba sustitución, recuperación y actualización desde 0.4.1, 0.6.4, 0.6.4.1 y 0.6.4.2
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,6 +101,11 @@ jobs:
           gh release download v0.6.4.1 --repo $env:GITHUB_REPOSITORY --pattern JARVIS.exe --dir bridge-probe
           if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el ejecutable de la 0.6.4.1.' }
           $env:JARVIS_TEST_BRIDGE_EXE = (Resolve-Path bridge-probe/JARVIS.exe).Path
+          git fetch --depth=1 origin tag v0.6.4.2
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el código de la 0.6.4.2.' }
+          gh release download v0.6.4.2 --repo $env:GITHUB_REPOSITORY --pattern JARVIS.exe --dir catalog-probe
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el ejecutable de la 0.6.4.2.' }
+          $env:JARVIS_TEST_CATALOG_PREVIOUS_EXE = (Resolve-Path catalog-probe/JARVIS.exe).Path
           python -m unittest -v test_update_windows
       - uses: actions/upload-artifact@v4
         with:
@@ -125,13 +135,14 @@ jobs:
           git -C wiki-publish push origin HEAD:master
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la wiki.' }
       - name: Publica una versión nueva
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = python -c "from updater import VERSION; print(VERSION)"
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo leer la versión.' }
+          if ($version -match '-(alpha|beta|rc)\.') { throw 'Las compilaciones candidatas quedan limitadas a artefactos de CI.' }
           $tag = "v$version"
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) { exit 0 }

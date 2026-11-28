@@ -266,8 +266,11 @@ class Desktop:
         if selection is None and (title in SYSTEM_LOCATIONS or title in SYSTEM_EXECUTABLES):
             return None
         apps = self.applications()
-        options = [(app, app_option(app)) if isinstance(app, Application) else (app, TargetOption(app[0], app))
-                   for app in apps]
+        options = {
+            app.key if isinstance(app, Application) else ("appsfolder", app[1].casefold()):
+            (app, app_option(app)) if isinstance(app, Application) else (app, TargetOption(app[0], app))
+            for app in apps
+        }.values()
         if selection is not None:
             for app, option in options:
                 if option.target == selection:
@@ -419,7 +422,7 @@ class Desktop:
         return f"Envié a Windows la orden de {labels[action]}."
 
 
-def execute(desktop, command, conversational=False, selection=None, policy=None, approved=False):
+def execute(desktop, command, conversational=False, selection=None, policy=None, approved=False, guard=None):
     parsed = parse(command)
     if not parsed:
         return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
@@ -476,6 +479,8 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
         if action == "refresh_apps":
             return desktop.refresh_applications()
         if action == "open":
+            if guard is not None and not guard():
+                return RejectedAction("Se canceló la acción de voz.", "cancelada")
             return desktop.open_app(*args, **target)
         if action == "minimize":
             return desktop.minimize(*args, **target)

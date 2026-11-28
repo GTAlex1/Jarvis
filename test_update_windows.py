@@ -142,6 +142,11 @@ class PackagedUpdateTest(unittest.TestCase):
         self.exercise_direct_upgrade("JARVIS_TEST_BRIDGE_EXE", "0.6.4.1",
                                      "7ca1421c7b72b131779e08883d65e410b30b5ff46699bf5bde914e2498503826")
 
+    @unittest.skipUnless(os.getenv("JARVIS_TEST_CATALOG_PREVIOUS_EXE"), "Requiere el binario 0.6.4.2")
+    def test_direct_upgrade_from_0_6_4_2(self):
+        self.exercise_direct_upgrade("JARVIS_TEST_CATALOG_PREVIOUS_EXE", "0.6.4.2",
+                                     "a34a5a35784281db6eba6f0f094eca1333f59603c300f2755dfe0a30f682ef92")
+
     def test_rollback_of_started_binary_with_wrong_version_receipt(self):
         folder = Path(tempfile.mkdtemp(prefix="JARVIS rollback versión "))
         target = folder / f"JARVISReceiptProbe-{uuid4().hex}.exe"

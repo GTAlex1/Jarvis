@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.6.4.2"
+VERSION = "0.6.5-rc.1"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
