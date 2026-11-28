@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 import unicodedata
-from commands import HELP, clean, parse, rectangle
+from commands import HELP, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
 from app_catalog import Application, Identity, labels, name_key, resolve
 from app_launch import launch_verified, matches_identity
@@ -521,7 +521,13 @@ def console(assistant):
                 continue
             if parse(command) == ("exit",):
                 return 0
-            result = assistant.execute(command)
+            result = assistant.execute(command, conversational=True)
+            if isinstance(result, Clarification):
+                print(result.written)
+                choice = input("Número de opción (vacío para cancelar) > ").strip()
+                if not choice.isdecimal() or len(choice) > 5 or not 1 <= int(choice) <= len(result.options):
+                    continue
+                result = assistant.execute(SelectedCommand(command, result.options[int(choice) - 1]))
             print("Usa el panel de JARVIS para apagar o reiniciar." if isinstance(result, PowerAction) else result)
         except (EOFError, KeyboardInterrupt):
             return 0

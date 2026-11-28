@@ -236,7 +236,7 @@ def catalog():
 
 
 def windows_inventory():
-    from game_providers import classify_shortcuts, game_entries
+    from game_providers import GAME_STORES, LAUNCHERS, classify_shortcuts, game_app, game_entries
 
     shell = inventory()
     installed = tuple(uninstall_entries())
@@ -246,7 +246,20 @@ def windows_inventory():
     entries = [*games]
     for app in (*desktop_entries(shell), *shortcuts, *registered_apps(installed),
                 *portable_apps(portable_folders())):
-        if app.game or name_key(app.name) in game_names:
+        key = name_key(app.name)
+        if app.game or key in game_names:
+            continue
+        if key in GAME_STORES and app.source == "start":
+            # The Windows entry can point at the generic launcher. Keep it as
+            # an activation request, but discard any launcher identity as proof.
+            entries.append(game_app(app.name, GAME_STORES[key], app.route,
+                                    note="Si aparece el cliente, selecciona Jugar en el juego solicitado."))
+            game_names.add(key)
+            continue
+        if key in GAME_STORES and any(
+            PureWindowsPath(identity.value).stem.casefold() in LAUNCHERS
+            for identity in app.evidence if identity.kind == "exe"
+        ):
             continue
         if app.source in {"portable", "registry"} and any(
             any(root in PureWindowsPath(identity.value).parents for root in game_roots)

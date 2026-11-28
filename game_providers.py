@@ -22,13 +22,13 @@ URI_PROVIDERS = {
 }
 LAUNCHERS = {
     "riotclientservices": "riot", "riotclientux": "riot",
-    "hoyoplay": "hoyoplay", "hyp": "hoyoplay",
+    "hoyoplay": "hoyoplay", "hyp": "hoyoplay", "hoyoplaylauncher": "hoyoplay",
     "epicgameslauncher": "epic", "steam": "steam",
     "eadesktop": "ea", "ealauncher": "ea", "origin": "ea",
     "battle.net": "battlenet", "battle.net launcher": "battlenet",
     "ubisoftconnect": "ubisoft", "upc": "ubisoft", "uplay": "ubisoft",
     "galaxyclient": "gog", "galaxyclient service": "gog",
-    "minecraftlauncher": "xbox", "gamingapp": "xbox",
+    "minecraftlauncher": "xbox", "minecraft": "xbox", "gamingapp": "xbox",
 }
 # These are names of observed game processes, never executable launch routes.
 GAME_PROCESSES = {
@@ -42,6 +42,12 @@ GAME_PROCESSES = {
     "rocket league": ("RocketLeague.exe",),
     "minecraft": ("Minecraft.Windows.exe",),
     "minecraft for windows": ("Minecraft.Windows.exe",),
+}
+GAME_STORES = {
+    "valorant": "riot", "league of legends": "riot", "teamfight tactics": "riot",
+    "genshin impact": "hoyoplay", "honkai star rail": "hoyoplay", "honkai impact 3rd": "hoyoplay",
+    "zenless zone zero": "hoyoplay", "minecraft for windows": "xbox", "minecraft": "xbox",
+    "minecraft java edition": "xbox", "rocket league": "epic",
 }
 GAME_ALIASES = {
     "valorant": ("valo",), "league of legends": ("lol",),
@@ -116,7 +122,7 @@ def classify_shortcuts(rows):
         launcher = LAUNCHERS.get(PureWindowsPath(target).stem.casefold())
         args = item.get("Arguments") or ""
         key = name_key(name)
-        if launcher and (key in GAME_PROCESSES or (args and re.search(
+        if launcher and (key in GAME_STORES or (args and re.search(
                 r"(?:--launch-product=|--game(?:[= ]|biz)|--exec(?:[= ])|--launch-game|"
                 r"/gameId=|/launchGame=|(?:^| )-launch(?:[= ]))", args, re.I))):
             note = "Si el cliente muestra la ficha, pulsa Jugar para iniciar el juego." if launcher in {
@@ -250,6 +256,37 @@ def xbox_games(snapshot):
         yield replace(app, evidence=(Identity("aumid", appid), *app.evidence))
 
 
+def riot_games(program_data, installed):
+    # Riot metadata is used for identification only. Client-created shortcuts
+    # carry the supported game selection, authenticator and anticheat flow.
+    riot = program_data / "Riot Games"
+    metadata = json_metadata(riot / "RiotClientInstalls.json")
+    associated = metadata.get("associated_client", {})
+    roots = associated.keys() if isinstance(associated, dict) else ()
+    names = {"valorant": "VALORANT", "league of legends": "League of Legends"}
+    for value in roots:
+        root = win_path(value)
+        if not root or not Path(root).is_dir():
+            continue
+        parts = {part.casefold() for part in PureWindowsPath(root).parts}
+        for key, name in names.items():
+            if key in parts:
+                yield game_app(name, "riot", Identity("unavailable", root + "|" + name), root,
+                               backing=riot / "RiotClientInstalls.json",
+                               note="Crea un acceso directo del juego desde Riot Client y actualiza el catálogo.")
+    yield from publisher_games(installed, "riot", r"riot games", r"^riot |vanguard")
+
+
+def ubisoft_games():
+    installs = dict(registry_rows(r"Software\Ubisoft\Launcher\Installs", ("InstallDir", "DisplayName", "gameName")))
+    products = dict(registry_rows(r"Software\Ubisoft\Launcher\Games", ("DisplayName", "Name")))
+    for game_id, values in installs.items():
+        product = products.get(game_id, {})
+        yield from registry_games("ubisoft", ((game_id, {
+            **values, "DisplayName": values.get("DisplayName") or product.get("DisplayName") or product.get("Name"),
+        }),))
+
+
 def game_entries(shell, installed, shortcuts):
     program_data = Path(os.environ.get("PROGRAMDATA") or Path.home())
     steam_roots = {Path(root) for name, row in registry_rows(r"Software\Valve", ("SteamPath", "InstallPath"))
@@ -260,12 +297,11 @@ def game_entries(shell, installed, shortcuts):
     metadata = (
         ("steam", lambda: steam_games(steam_roots)),
         ("epic", lambda: epic_games(program_data / "Epic/EpicGamesLauncher/Data/Manifests")),
-        ("riot", lambda: publisher_games(installed, "riot", r"riot games", r"^riot |vanguard")),
+        ("riot", lambda: riot_games(program_data, installed)),
         ("hoyoplay", lambda: publisher_games(installed, "hoyoplay", r"hoyoverse|mihoyo|cognosphere", r"^hoyoplay|launcher")),
         ("xbox", lambda: xbox_games(shell)),
         ("ea", lambda: publisher_games(installed, "ea", r"electronic arts|^ea$", r"^ea (app|desktop|anticheat)|origin")),
-        ("ubisoft", lambda: registry_games("ubisoft", registry_rows(
-            r"Software\Ubisoft\Launcher\Installs", ("InstallDir", "DisplayName", "gameName")))),
+        ("ubisoft", ubisoft_games),
         ("battlenet", lambda: publisher_games(installed, "battlenet", r"blizzard", r"battle.net|agent")),
         ("gog", lambda: registry_games("gog", registry_rows(
             r"Software\GOG.com\Games", ("gameName", "path", "exe")))),
