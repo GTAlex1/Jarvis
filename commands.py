@@ -70,6 +70,7 @@ SPOKEN_SCREEN = re.compile(r" (?:pantalla|monitor) (" + "|".join(SPOKEN_NUMBERS)
 LIST_COMMANDS = {
     "ventanas": "windows", "lista ventanas": "windows",
     "aplicaciones": "apps", "programas": "apps", "lista aplicaciones": "apps",
+    "estado del arranque": "launch_status", "estado de lanzamiento": "launch_status",
     "actualiza aplicaciones": "refresh_apps", "actualizar catalogo": "refresh_apps",
     "pantallas": "screens", "monitores": "screens", "lista pantallas": "screens",
     "ayuda": "help", "ayudame": "help", "dime como puedes ayudarme": "help",
@@ -180,7 +181,7 @@ sube volumen · baja volumen · silencia o activa el sonido
 reproducir o pausar · siguiente canción · anterior canción
 
 CONSULTAS
-ventanas · aplicaciones · actualiza aplicaciones · pantallas · ayuda · salir
+ventanas · aplicaciones · actualiza aplicaciones · estado del arranque\npantallas · ayuda · salir
 
 Si hay varias ventanas, usa un título más específico.
 Cerrar solicita el cierre normal y permite que la aplicación pregunte si quieres guardar.

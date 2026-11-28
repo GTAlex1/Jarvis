@@ -36,6 +36,7 @@ class Resident:
     def __init__(self, root, assistant, create_panel):
         self.root = root
         self.assistant = assistant
+        self.assistant.desktop.on_launch = lambda result: self.defer(self.report_launch, result)
         self.create_panel = create_panel
         self.panel = None
         self.events = SimpleQueue()
@@ -239,6 +240,10 @@ class Resident:
     def show_test(self, result):
         if self.panel is not None:
             self.panel.voice_test(result)
+
+    def report_launch(self, result):
+        self.record_voice(result.message, "reply")
+        self.voice.trace("resultado", "arranque_" + result.state)
 
     def show_voice_status(self, state, detail):
         if state not in {"disabled", "muted"} and (not self.microphone or not self.voice_options.enabled):

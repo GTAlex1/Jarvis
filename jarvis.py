@@ -1,3 +1,4 @@
+from collections import deque
 import ctypes as c
 from ctypes import wintypes as w
 from pathlib import PureWindowsPath
@@ -9,7 +10,7 @@ import unicodedata
 from commands import HELP, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
 from app_catalog import Application, Identity, labels, name_key, resolve
-from app_launch import launch_verified, matches_identity
+from app_launch import LaunchMonitor, launch_verified, matches_identity
 from windows_catalog import catalog, start_application, valid_route, web_identity
 from windows_instances import WindowsInstances
 from permissions import ALLOW, BLOCK, classify
@@ -193,8 +194,24 @@ class Desktop:
         self.index = catalog()
         self.window_owners = {}
         self.index.refresh()
+        self.launch_results = deque(maxlen=12)
+        self.on_launch = lambda _result: None
+        self.launch_monitor = LaunchMonitor(self.running, start_application, self.launch_changed)
+
+    def launch_changed(self, result):
+        self.launch_results.append(result.message)
+        self.on_launch(result)
+
+    def launch_status(self):
+        return "\n".join(tuple(self.launch_results)[-4:]) or "Todavía no hay resultados de arranque."
+
+    def verified_open(self, application):
+        monitor = getattr(self, "launch_monitor", None)
+        return (monitor.submit(application) if monitor is not None
+                else launch_verified(application, self.running, start_application).message)
 
     def close(self):
+        self.launch_monitor.close()
         self.index.close()
 
     def screens(self):
@@ -269,7 +286,7 @@ class Desktop:
             return f"Solicité abrir «{title}»."
         if selection is None and title in SYSTEM_EXECUTABLES:
             application = self.system_application(title)
-            return launch_verified(application, self.running, start_application).message
+            return self.verified_open(application)
         application = self.choose_application(title, selection)
         if application is None:
             if getattr(self, "index", None) is not None:
@@ -281,7 +298,7 @@ class Desktop:
             # Embedded users of Desktop.applications from the original API can supply Start tuples.
             os.startfile("shell:AppsFolder\\" + application[1])
             return f"Solicité a Windows que abriera «{application[0]}»."
-        return launch_verified(application, self.running, start_application).message
+        return self.verified_open(application)
 
     def system_application(self, title):
         path = str(PureWindowsPath(os.environ["SystemRoot"]) / SYSTEM_EXECUTABLES[title])
@@ -533,6 +550,8 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
                 + (" · sin ruta de arranque" if app.route.kind == "unavailable" else "")
                 if isinstance(app, Application) else app[0] for app in desktop.applications()
             ) or "No encontré aplicaciones indexadas."
+        if action == "launch_status":
+            return desktop.launch_status()
         if action == "refresh_apps":
             return desktop.refresh_applications()
         if action == "open":

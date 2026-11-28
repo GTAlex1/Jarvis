@@ -74,3 +74,106 @@ def launch_verified(app, observe, launch, timeout=None, clock=monotonic, pause=s
         return LaunchResult("already_running", f"«{app.name}» ya estaba abierto. Envié la solicitud a Windows.")
     detail = f" {app.note}" if app.note else ""
     return LaunchResult("unverified", f"Solicité abrir «{app.name}», pero no pude comprobar su arranque.{detail}")
+
+
+@dataclass
+class PendingLaunch:
+    app: object
+    before: frozenset
+    deadline: float
+    phase: str = "requested"
+    extended: bool = False
+
+
+def launch_progress(app, before, instances, deadline, now):
+    """Describe evidence from the product separately from its launcher."""
+    from game_providers import LAUNCHERS
+
+    matching = {instance for instance in instances if matches_identity(app, instance)}
+    fresh = matching - before
+    if any(not app.game or entry.window for entry in fresh):
+        noun = "El juego" if app.game else "La aplicación"
+        return LaunchResult("verified", f"{noun} «{app.name}» está en ejecución.")
+    if before & matching:
+        return LaunchResult("already_running", f"«{app.name}» ya estaba abierto antes de la solicitud.")
+    if now >= deadline:
+        if app.note:
+            return LaunchResult("manual", f"No confirmé el arranque de «{app.name}». {app.note}")
+        return LaunchResult("unverified", f"Se agotó el plazo sin confirmar el arranque de «{app.name}».")
+    if fresh:
+        return LaunchResult("starting", f"El proceso de «{app.name}» ha arrancado. Espero su ventana.")
+    if app.game and any(LAUNCHERS.get(PureWindowsPath(item.executable).stem.casefold()) == app.source
+                        for item in instances):
+        return LaunchResult("launcher", f"El cliente de «{app.name}» está abierto. El juego aún no está confirmado.")
+    return LaunchResult("requested", "")
+
+
+class LaunchMonitor:
+    """One polling worker handles concurrent launch checks without holding the command queue."""
+    def __init__(self, observe, launch, on_result, clock=monotonic):
+        from threading import Condition, Thread
+        self.observe, self.launch, self.on_result, self.clock = observe, launch, on_result, clock
+        self.condition = Condition()
+        self.pending = {}
+        self.closed = False
+        self.worker = Thread(target=self.run, name="jarvis-launch-check", daemon=True)
+        self.worker.start()
+
+    def submit(self, app):
+        if app.route.kind == "unavailable":
+            return launch_verified(app, self.observe, self.launch).message
+        try:
+            before = frozenset(item for item in self.observe() if matches_identity(app, item)
+                               and (not app.game or item.window))
+        except OSError:
+            # Verification is best effort. With no baseline, don't claim a new launch.
+            self.launch(app)
+            return f"Solicité abrir «{app.name}». Windows impidió comprobar el estado anterior."
+        with self.condition:
+            if app.key in self.pending:
+                return f"Ya estoy comprobando el arranque de «{app.name}»."
+            if len(self.pending) >= 16:
+                return "Hay demasiados arranques comprobándose. Espera unos segundos y vuelve a intentarlo."
+            self.launch(app)
+            self.pending[app.key] = PendingLaunch(app, before, self.clock() + (45 if app.game else 8))
+            self.condition.notify()
+        if app.game and app.note:
+            return f"Solicité abrir «{app.name}». {app.note} Comprobaré el arranque en segundo plano."
+        return f"Solicité abrir «{app.name}». Comprobaré el arranque en segundo plano."
+
+    def run(self):
+        while True:
+            with self.condition:
+                self.condition.wait_for(lambda: self.closed or self.pending)
+                if self.closed:
+                    return
+                batch = tuple(self.pending.items())
+            now = self.clock()
+            try:
+                instances = tuple(self.observe())
+            except OSError:
+                instances = ()
+            for key, job in batch:
+                result = launch_progress(job.app, job.before, instances, job.deadline, now)
+                if result.state == "starting" and not job.extended:
+                    job.extended = True
+                    job.deadline = max(job.deadline, now + 30)
+                done = result.state in {"verified", "already_running", "manual", "unverified"}
+                with self.condition:
+                    if self.closed:
+                        return
+                    if done:
+                        self.pending.pop(key, None)
+                if result.message and (done or job.phase != result.state):
+                    job.phase = result.state
+                    self.on_result(result)
+            with self.condition:
+                if not self.closed and self.pending:
+                    self.condition.wait(timeout=1.0)
+
+    def close(self):
+        with self.condition:
+            self.closed = True
+            self.pending.clear()
+            self.condition.notify_all()
+        self.worker.join(timeout=3)
