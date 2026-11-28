@@ -155,7 +155,7 @@ class Catalog:
                 except (OSError, ValueError):
                     failures.add(name)
             with self.lock:
-                preserved = [app for app in self.entries if app.source in failures and self.valid(app)]
+                preserved = [app for app in self.entries if ("windows" in failures or app.source in failures) and self.valid(app)]
                 self.entries = consolidate((*discovered, *preserved))
                 self.updated = time()
                 try:
