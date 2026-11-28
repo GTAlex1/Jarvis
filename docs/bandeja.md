@@ -10,7 +10,7 @@ El icono usa el visor, la capucha y los auriculares de la mascota como silueta. 
 | Escuchando | Barras de escucha |
 | Procesando | Puntos y líneas horizontales |
 | Ejecutando | Ojos activos y un rayo |
-| Error | Angulos y signo de exclamación |
+| Error | Ángulos y signo de exclamación |
 | Micrófono o escucha desactivados | Líneas planas y un símbolo de silencio |
 
 El texto al pasar el ratón muestra el estado general. No incluye información de la orden, de la aplicación o de los perfiles de voz. En el menú puedes abrir JARVIS, controlar la escucha, configurar voz y permisos, buscar actualizaciones, reiniciar y salir completamente.

@@ -1,4 +1,4 @@
-from pathlib import PureWindowsPath
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
@@ -185,7 +185,7 @@ class LaunchAndTray(unittest.TestCase):
         self.assertEqual(handover_kind(ActiveInstance(1, 21, "0.6.5-rc.1", True), VERSION), "cooperative")
         self.assertEqual(handover_kind(ActiveInstance(1, 21), VERSION), "manual")
 
-    def test_menu_exposes_both_kinds_of_exit_and_state_controls(self):
+    def test_menu_exposes_exit_and_state_controls(self):
         from resident import Resident
         from preferences import VoiceSettings
 
@@ -204,3 +204,44 @@ class LaunchAndTray(unittest.TestCase):
         self.assertIs(labels["Reiniciar JARVIS"][1], app.restart)
         self.assertIs(labels["Salir completamente"][1], app.quit)
         self.assertIn("Buscar actualizaciones", labels)
+
+
+
+@unittest.skipUnless(sys.platform == "win32", "Requiere Windows")
+class NativeWindowIdentity(unittest.TestCase):
+    def test_can_read_the_explicit_appid_in_a_real_window_property_store(self):
+        import ctypes as c
+        from ctypes import wintypes as w
+        import tkinter as tk
+        from windows_appid import APP_ID, IID_PROPERTY_STORE, PropertyKey, PropertyValue
+
+        root = tk.Tk()
+        root.title("JARVIS native AppID fixture")
+        root.update()
+        desktop = Desktop()
+        api = desktop.instances.window_aumid
+        pid = next(handle for handle, caption, _ in desktop.windows() if caption == root.title())
+        value = PropertyValue()
+        appid = ("Chromium._crx_" + "c" * 32)
+        text = c.create_unicode_buffer(appid)
+        value.type = 31
+        value.payload[0] = c.cast(text, c.c_void_p).value
+        status = api.init(None, 2)
+        store = c.c_void_p()
+        try:
+            self.assertGreaterEqual(api.open(pid, c.byref(IID_PROPERTY_STORE), c.byref(store)), 0)
+            methods = c.cast(store, c.POINTER(c.POINTER(c.c_void_p))).contents
+            set_value = c.WINFUNCTYPE(w.LONG, c.c_void_p, c.POINTER(PropertyKey),
+                                     c.POINTER(PropertyValue))(methods[6])
+            self.assertGreaterEqual(set_value(store, c.byref(APP_ID), c.byref(value)), 0)
+            self.assertEqual(api(pid), appid)
+            self.assertTrue(any(owner.aumid == appid for owner in desktop.running()))
+            self.assertGreaterEqual(set_value(store, c.byref(APP_ID), c.byref(PropertyValue())), 0)
+        finally:
+            if store:
+                methods = c.cast(store, c.POINTER(c.POINTER(c.c_void_p))).contents
+                api.release(methods[2])(store)
+            if status >= 0:
+                api.uninit()
+            desktop.close()
+            root.destroy()

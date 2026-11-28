@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import replace
 import ctypes as c
 from ctypes import wintypes as w
 from pathlib import PureWindowsPath
@@ -211,6 +212,7 @@ class Desktop:
         return "\n".join(tuple(self.launch_results)[-4:]) or "Todavía no hay resultados de arranque."
 
     def verified_open(self, application):
+        application = replace(application, name=commercial_title(application.name))
         monitor = getattr(self, "launch_monitor", None)
         return (monitor.submit(application) if monitor is not None
                 else launch_verified(application, self.running, start_application).message)
@@ -553,7 +555,7 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
             ) or "No encontré ventanas."
         if action == "apps":
             return "\n".join(
-                f"{app.name} · {SOURCE_LABELS.get(app.source, app.source)}"
+                f"{commercial_title(app.name)} · {SOURCE_LABELS.get(app.source, app.source)}"
                 + (" · sin ruta de arranque" if app.route.kind == "unavailable" else "")
                 if isinstance(app, Application) else app[0] for app in desktop.applications()
             ) or "No encontré aplicaciones indexadas."
