@@ -62,6 +62,8 @@ def normalize_order(text):
         # ASR corrections for destructive actions must be explicit lexical
         # variants, never a fuzzy match to an arbitrary system command.
         return f"{base} el equipo"
+    if base == "cierra" and re.fullmatch(r"[^,;]+, pero deja [^,;]+ abierto", target):
+        return f"{base} {target}"
     if " si " in f" {target} " or re.search(r"[,;]|\b(?:o|y) (?:abre|cierra|apaga|reinicia)\b", target):
         return "" if text != "silencia o activa el sonido" else text
     if base == "abre" and target_name(target) in CALCULATOR:

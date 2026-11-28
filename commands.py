@@ -103,6 +103,14 @@ def parse(command):
         if ENGLISH_NEGATION.search(english):
             return None
         value = re.sub(r"[, ]+please$", "", english)
+    if value == "cierra los launchers que no estoy utilizando":
+        return ("launcher_review",)
+    lifecycle = re.fullmatch(
+        r"(?:cierra|cerrar) (.+?)(?: y (?:su|el) (?:launcher|iniciador)|,? pero deja (.+?) abierto)",
+        value,
+    )
+    if lifecycle and not re.search(r"\b(?:no|nunca|si|cuando|salvo)\b", lifecycle[1]):
+        return "close", target_name(lifecycle[1]), "keep" if lifecycle[2] else "associated"
     if value in LIST_COMMANDS:
         return (LIST_COMMANDS[value],)
     if value in SYSTEM_COMMANDS:

@@ -22,7 +22,7 @@ from security_dialog import SecurityDialog
 from dialogue import Clarification, SelectedCommand
 from preferences import (application_folders, save_application_folders, microphone_enabled, save_voice_settings, set_microphone,
                          set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings,
-                         adaptation_settings, save_adaptation_settings, update_channel, save_update_channel)
+                         adaptation_settings, save_adaptation_settings, update_channel, save_update_channel, save_lifecycle_settings)
 from speaker_dialog import SpeakerDialog
 from voice_authorization import (ApprovalAnswer, ExitAction, LocalApproval, PendingApproval,
                                  PowerAction, PowerScheduled, RejectedAction, UNVERIFIED)
@@ -152,6 +152,8 @@ class Resident:
             ("Seguridad y permisos…", False, self.open_security),
             ("Añadir carpeta de aplicaciones…", False, self.configure_application_folders),
             ("Quitar carpetas adicionales…", False, self.clear_application_folders),
+            *((("Cierre de videojuegos y launchers…", self.assistant.desktop.lifecycle_settings.enabled,
+                self.configure_lifecycle),) if hasattr(self, "assistant") and "configure_lifecycle" in dir(self) else ()),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
@@ -388,6 +390,27 @@ class Resident:
             return completed.result()
         except Exception as error:
             return f"No se pudo completar la orden: {error}"
+
+    def configure_lifecycle(self):
+        from lifecycle import LifecycleSettings
+
+        current = self.assistant.desktop.lifecycle_settings
+        enabled = messagebox.askyesnocancel("JARVIS", "¿Cerrar también el launcher si se verifica que está libre?",
+                                            default="yes" if current.enabled else "no", parent=self.root)
+        if enabled is None:
+            return
+        providers = simpledialog.askstring("JARVIS", "Proveedores que se quedarán abiertos, separados por comas.",
+                                           initialvalue=", ".join(current.providers), parent=self.root)
+        if providers is None:
+            return
+        games = simpledialog.askstring("JARVIS", "Juegos cuyo launcher se quedará abierto, separados por comas.",
+                                       initialvalue=", ".join(current.games), parent=self.root)
+        if games is None:
+            return
+        value = LifecycleSettings(enabled, tuple(name_key(item).replace(" ", "") for item in providers.split(",") if item.strip()),
+                                  tuple(name_key(item) for item in games.split(",") if item.strip()))
+        save_lifecycle_settings(value)
+        self.assistant.desktop.lifecycle_settings = value
 
     def configure_application_folders(self):
         current = application_folders()

@@ -11,6 +11,7 @@ import unicodedata
 from commands import HELP, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
 from app_catalog import Application, Identity, labels, name_key, resolve
+from lifecycle import LifecycleMonitor, product_owner
 from app_launch import LaunchMonitor, launch_verified, matches_identity
 from windows_catalog import catalog, start_application, valid_route, web_identity
 from windows_instances import WindowsInstances
@@ -199,6 +200,19 @@ class Desktop:
         self.launch_results = deque(maxlen=12)
         self.on_launch = lambda _result: None
         self.launch_monitor = LaunchMonitor(self.running, start_application, self.launch_changed)
+        from preferences import lifecycle_settings
+        self.lifecycle_settings = lifecycle_settings()
+        self.lifecycle = LifecycleMonitor(self.running, self.close_launcher, self.lifecycle_changed,
+                                          self.launch_monitor.has_pending)
+
+    def lifecycle_changed(self, message):
+        from app_launch import LaunchResult
+        self.launch_changed(LaunchResult("cierre", message))
+
+    def close_launcher(self, candidate):
+        if candidate not in self.snapshot_windows()[1].values():
+            return False
+        return bool(self.api.PostMessageW(candidate.window, 0x0010, 0, 0))
 
     def context_names(self):
         return tuple(dict.fromkeys(name for app in self.index.entries for name in
@@ -218,6 +232,7 @@ class Desktop:
                 else launch_verified(application, self.running, start_application).message)
 
     def close(self):
+        self.lifecycle.close()
         self.launch_monitor.close()
         self.index.close()
 
@@ -416,13 +431,24 @@ class Desktop:
                                   "ventanas", options)
         return matches[0]
 
-    def window_action(self, action, title, selection=None, voice=False):
+    def window_action(self, action, title, selection=None, voice=False, launcher="", guard=None):
         handle, name, _ = (self.select_window(title, selection, voice) if selection or voice
                            else self.select_window(title))
         name = self.window_label((handle, name, _))
         if action == "close":
+            if guard and not guard():
+                return RejectedAction("Se canceló la acción de voz.", "cancelada")
+            owner = getattr(self, "window_owners", {}).get(handle)
+            catalog = self.index.entries if getattr(self, "lifecycle", None) else ()
+            game = product_owner(owner, catalog) if owner and owner.started else None
             if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
                 raise c.WinError(c.get_last_error())
+            if game:
+                include = launcher != "keep" and self.lifecycle_settings.allows(game, launcher == "associated")
+                if self.lifecycle.submit(game, owner, catalog, include, guard):
+                    return f"Solicité cerrar «{name}». Comprobaré el cierre en segundo plano."
+            if launcher == "associated":
+                return f"Solicité cerrar «{name}». No pude verificar un launcher asociado."
             if self.api.IsWindow(handle) == 0:
                 return f"Cerré «{name}»."
             return f"Solicité cerrar «{name}». Revisa si la aplicación pide guardar cambios."
@@ -556,9 +582,11 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
         if action == "apps":
             return "\n".join(
                 f"{commercial_title(app.name)} · {SOURCE_LABELS.get(app.source, app.source)}"
-                + (" · sin ruta de arranque" if app.route.kind == "unavailable" else "")
+                + {"unavailable": " · sin ruta de arranque", "provider_client": " · requiere Jugar en el cliente"}.get(app.route.kind, "")
                 if isinstance(app, Application) else app[0] for app in desktop.applications()
             ) or "No encontré aplicaciones indexadas."
+        if action == "launcher_review":
+            return "Para proteger partidas y descargas, necesito comprobar cada relación al cerrar su videojuego."
         if action == "launch_status":
             return desktop.launch_status()
         if action == "refresh_apps":
@@ -577,6 +605,11 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
             if policy is not None:
                 return ExitAction()
             return "Usa «Salir de JARVIS» en la bandeja o escribe «salir»."
+        if action == "close":
+            if len(args) == 2:
+                target["launcher"] = args.pop()
+            if guard is not None:
+                target["guard"] = guard
         return desktop.window_action(action, *args, **target)
     except AmbiguousTarget as error:
         return error.clarification if conversational else str(error)

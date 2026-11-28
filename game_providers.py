@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from app_catalog import Application, Identity, collect_source, name_key
 from windows_catalog import (LOCAL_FILE, exe_path, existing_exe, path_identity, registry_rows,
-                             icon_executable, web_identity)
+                             icon_executable, web_identity, desktop_entries)
 
 URI_PROVIDERS = {
     "steam": r"steam://(?:rungameid|run)/[1-9]\d{0,19}/?",
@@ -250,6 +250,32 @@ def publisher_games(installed, source, publishers, exclude):
     return registry_games(source, rows)
 
 
+def hoyoplay_games(shell, installed, shortcuts):
+    clients = (*shortcuts, *desktop_entries(shell))
+    launcher = next((app for app in clients if not app.game and (
+        any(i.kind == "exe" and LAUNCHERS.get(PureWindowsPath(i.value).stem.casefold()) == "hoyoplay"
+            for i in app.evidence)
+        or (app.route.kind == "appsfolder" and name_key(app.name) == "hoyoplay")
+    )), None)
+    if launcher is None:
+        for _, row in installed:
+            if name_key(row.get("DisplayName", "")) != "hoyoplay":
+                continue
+            path = existing_exe(icon_executable(row.get("DisplayIcon")))
+            if path and LAUNCHERS.get(PureWindowsPath(path).stem.casefold()) == "hoyoplay":
+                launcher = Application("HoYoPlay", "registry", Identity("file", path), path_identity(path))
+                break
+    for game in publisher_games(installed, "hoyoplay", r"hoyoverse|mihoyo|cognosphere", r"^hoyoplay|launcher"):
+        if launcher is None:
+            yield game
+            continue
+        # HoYoPlay can locate several games from its own library. Its normal
+        # Windows entry is supported even when no per-game shortcut was created.
+        # Keep product-specific identity separate from the shared launch route.
+        yield replace(game, route=Identity("provider_client", launcher.route.kind + "|" + launcher.route.value),
+                      note=f"Selecciona «{game.name}» y pulsa Jugar en HoYoPlay.")
+
+
 def xbox_games(snapshot):
     for row in snapshot.get("Packages", ()):
         appid, root = row.get("Id", ""), win_path(row.get("Location"))
@@ -316,7 +342,7 @@ def game_entries(shell, installed, shortcuts, failed=None):
         ("steam", discover_steam),
         ("epic", lambda: epic_games(program_data / "Epic/EpicGamesLauncher/Data/Manifests")),
         ("riot", lambda: riot_games(program_data, installed)),
-        ("hoyoplay", lambda: publisher_games(installed, "hoyoplay", r"hoyoverse|mihoyo|cognosphere", r"^hoyoplay|launcher")),
+        ("hoyoplay", lambda: hoyoplay_games(shell, installed, shortcuts)),
         ("xbox", lambda: xbox_games(shell)),
         ("ea", lambda: publisher_games(installed, "ea", r"electronic arts|^ea$", r"^ea (app|desktop|anticheat)|origin")),
         ("ubisoft", ubisoft_games),
@@ -329,7 +355,7 @@ def game_entries(shell, installed, shortcuts, failed=None):
         games.extend(collect_source(provider, discover, failed))
     # Combine records of a product within the same store, preserving distinct
     # installations and storefronts. Prefer generated links over manual fallbacks.
-    games.sort(key=lambda app: (app.route.kind == "unavailable",
+    games.sort(key=lambda app: (app.route.kind in {"unavailable", "provider_client"},
                                 app.source in {"steam", "epic"} and not app.route.value.startswith(
                                     ("steam://rungameid/", "com.epicgames.launcher://apps/")),
                                 app.backing.casefold().endswith(".url")))
@@ -338,7 +364,7 @@ def game_entries(shell, installed, shortcuts, failed=None):
         key = app.source, name_key(app.name)
         options = merged.setdefault(key, [])
         match = next((i for i, preferred in enumerate(options)
-                      if preferred.key == app.key or app.route.kind == "unavailable"
+                      if preferred.key == app.key or app.route.kind in {"unavailable", "provider_client"}
                       or bool(preferred.backing.casefold().endswith(".url")) != bool(app.backing.casefold().endswith(".url"))
                       and preferred.route.kind == app.route.kind == "uri"), None)
         if match is None:

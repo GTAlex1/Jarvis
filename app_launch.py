@@ -171,6 +171,10 @@ class LaunchMonitor:
                 if not self.closed and self.pending:
                     self.condition.wait(timeout=1.0)
 
+    def has_pending(self):
+        with self.condition:
+            return bool(self.pending)
+
     def close(self):
         with self.condition:
             self.closed = True

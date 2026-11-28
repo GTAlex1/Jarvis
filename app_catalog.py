@@ -31,6 +31,8 @@ class Application:
 
     @property
     def key(self):
+        if self.route.kind == "provider_client":
+            return self.route.kind, self.route.value.casefold() + "|" + name_key(self.name)
         return self.route.kind, self.route.value.casefold()
 
 

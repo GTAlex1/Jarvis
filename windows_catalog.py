@@ -219,10 +219,25 @@ def local_exists(path, directory=False):
         return False
 
 
+def provider_client(app):
+    from dataclasses import replace
+    from game_providers import LAUNCHERS
+
+    kind, _, value = app.route.value.partition("|")
+    if app.source != "hoyoplay" or kind not in {"file", "appsfolder", "shortcut"}:
+        return None
+    if kind == "file" and LAUNCHERS.get(PureWindowsPath(value).stem.casefold()) != app.source:
+        return None
+    return replace(app, route=Identity(kind, value), evidence=(), backing="")
+
+
 def valid_route(app):
     from game_providers import provider_uri
 
     route = app.route
+    if route.kind == "provider_client":
+        client = provider_client(app)
+        return client is not None and valid_route(client)
     if app.backing and not local_exists(app.backing):
         return False
     roots = tuple(identity.value for identity in app.evidence if identity.kind == "game_root")
@@ -251,6 +266,8 @@ def start_application(app):
     from game_providers import read_shortcut_url
 
     route = app.route
+    if route.kind == "provider_client":
+        return start_application(provider_client(app))
     if route.kind == "uri" and app.backing and app.backing.casefold().endswith(".url"):
         if read_shortcut_url(Path(app.backing)) != route.value:
             raise OSError("El acceso directo cambió. Actualiza el catálogo y vuelve a intentarlo.")

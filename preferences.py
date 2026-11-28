@@ -203,3 +203,22 @@ def save_update_channel(value):
         raise ValueError("Canal de actualizaciones desconocido.")
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "UpdateChannel", 0, winreg.REG_SZ, value)
+
+
+def lifecycle_settings():
+    from lifecycle import LifecycleSettings
+
+    try:
+        data = json.loads(read_value(SETTINGS_KEY, "LauncherLifecycle", "{}"))
+        return LifecycleSettings(data.get("enabled") is True,
+                                 tuple(value for value in data.get("providers", ()) if isinstance(value, str)),
+                                 tuple(value for value in data.get("games", ()) if isinstance(value, str)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return LifecycleSettings()
+
+
+def save_lifecycle_settings(settings):
+    import winreg
+
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "LauncherLifecycle", 0, winreg.REG_SZ, json.dumps(asdict(settings)))
