@@ -9,7 +9,6 @@ from unittest.mock import Mock, patch
 from app_catalog import Application, Catalog, Identity, consolidate, labels, resolve
 from app_launch import Running, launch_verified, matches_identity
 from commands import parse
-from command_language import normalize_order
 from dialogue import Clarification
 from game_providers import classify_shortcuts, epic_games, game_app, provider_uri, steam_games, vdf
 from jarvis import Desktop, execute
@@ -207,8 +206,8 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(parse("pon el honkai en la segunda pantalla"), ("place", "honkai", "monitor", 2))
         self.assertEqual(parse("Pon el Minecraft a pantalla completa"), ("place", "minecraft", "full", None))
         self.assertEqual(parse("actualiza aplicaciones"), ("refresh_apps",))
-        self.assertEqual(normalize_order("do not open Spotify"), "")
-        self.assertEqual(normalize_order("Could you open the calculator, please?"), "abre calculadora")
+        self.assertIsNone(parse("do not open Spotify"))
+        self.assertEqual(parse("Could you open the calculator, please?"), ("open", "calculator"))
         self.assertLess(version_tuple("0.6.4.2"), version_tuple("0.6.5-rc.1"))
         self.assertLess(version_tuple("0.6.5-rc.1"), version_tuple("0.6.5"))
 

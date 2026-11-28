@@ -130,7 +130,7 @@ class RecognitionCorpusTest(TestCase):
             self.skipTest("Modelo local ausente")
         result = benchmark(".", None)
         for name in ("help", "calc", "quick", "latin-help", "separated", "negcalc", "prefix", "other"):
-            self.assertEqual(result["cases"][name]["intent"], CASES[name], name)
+            self.assertEqual(result["cases"][name]["intent"], CASES[name], f"{name}: {result['cases'][name]}")
         for name in ("prefix", "other"):
             self.assertFalse(result["cases"][name]["activated"], name)
 

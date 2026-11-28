@@ -23,9 +23,9 @@ VERBS = {
 VARIANTS = {form: verb for verb, forms in VERBS.items() for form in forms}
 CLITIC = re.compile(r"(?:melo|mela|melos|melas|me|nos|lo|la)$")
 UNSAFE = re.compile(r"\b(?:no|nunca|jamas|excepto|quizas|cuando|si acaso|a lo mejor|y luego|"
-                    r"never|do not|don.t|hypothetically|if|suppose|imagine|said|says|imagina|supongamos|dijiste|dijo|dije|dice|dicen|dile|digan|decir|por ejemplo|"
+                    r"imagina|supongamos|dijiste|dijo|dije|dice|dicen|dile|digan|decir|por ejemplo|"
                     r"podria|deberia|deberias|habria|en caso de|voy a|iba a)\b")
-REQUEST = re.compile(r"^(?:(?:puedes|podrias|quiero que|por favor|porfa|me puedes|me podrias|please|could you|can you|would you)"
+REQUEST = re.compile(r"^(?:(?:puedes|podrias|quiero que|por favor|porfa|me puedes|me podrias)"
                      r"[, ]+)+")
 PLACEMENT = re.compile(r"\b(?:izquierda|derecha|esquina|mitad|monitor|pantalla|centro|arriba|abajo)\b")
 POWER_TARGETS = {"ordenador", "equipo", "pc", "computadora", "computador", "compu", "ordenador de nuevo"}
@@ -51,7 +51,7 @@ def normalize_order(text):
     if "?" in original and not requested and text != "que puedes hacer":
         return ""
     text = REQUEST.sub("", text)
-    text = re.sub(r"[, ]+(?:por favor|porfa|please)$", "", text).strip()
+    text = re.sub(r"[, ]+por favor$|[, ]+porfa$", "", text).strip()
     word, separator, target = text.partition(" ")
     base = VARIANTS.get(word) or VARIANTS.get(CLITIC.sub("", word), word)
     if base == "pon":
@@ -64,7 +64,7 @@ def normalize_order(text):
         return f"{base} el equipo"
     if " si " in f" {target} " or re.search(r"[,;]|\b(?:o|y) (?:abre|cierra|apaga|reinicia)\b", target):
         return "" if text != "silencia o activa el sonido" else text
-    if base in {"abre", "open", "launch"} and target_name(target) in CALCULATOR:
+    if base == "abre" and target_name(target) in CALCULATOR:
         return "abre calculadora"
     return base + separator + target
 

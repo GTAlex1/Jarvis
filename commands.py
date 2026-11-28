@@ -81,8 +81,18 @@ def target_name(value):
     return re.sub(r"^(?:(?:el|la|the) )?(?:(?:ventana|pestana)(?: de)? )?(?:el |la )?", "", value).strip()
 
 
+ENGLISH_REQUEST = re.compile(r"^(?:(?:please|could you|can you|would you)[, ]+)+")
+ENGLISH_VERB = re.compile(r"^(?:open|launch|close|minimize|maximize|restore|focus|move|put) ")
+ENGLISH_NEGATION = re.compile(r"\b(?:never|do not|don['’]t|if|unless|suppose|imagine)\b")
+
+
 def parse(command):
     value = clean(command)
+    english = ENGLISH_REQUEST.sub("", value)
+    if ENGLISH_VERB.match(english):
+        if ENGLISH_NEGATION.search(english):
+            return None
+        value = re.sub(r"[, ]+please$", "", english)
     if value in LIST_COMMANDS:
         return (LIST_COMMANDS[value],)
     if value in SYSTEM_COMMANDS:
@@ -109,6 +119,8 @@ def parse(command):
             return None
         return action, title
 
+    if ENGLISH_NEGATION.search(value) and re.search(r"\b(?:open|close|move|put|minimize)\b", value):
+        return None
     value = re.sub(r"^(?:mueve|mover|pon|poner|coloca|colocar|move|put) ", "", value)
     value = re.sub(r" (?:to|on) (?:the )?(?=left$|right$|top |bottom |full screen$)", " ", value)
     match = re.fullmatch(

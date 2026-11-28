@@ -48,7 +48,7 @@ def benchmark(source, whisper_path):
             segments, _ = model.transcribe(wave, language="es", beam_size=1, condition_on_previous_text=False)
             text = " ".join(segment.text for segment in segments).strip()
             return (parse(normalize_order(text)) if re.match(r"(?i)^jarvis\b[, ]+", text) else None,
-                    bool(re.match(r"(?i)^jarvis\b", text)))
+                    bool(re.match(r"(?i)^jarvis\b", text)), text)
 
     else:
         import voice_recognition as voice
@@ -68,8 +68,8 @@ def benchmark(source, whisper_path):
             for offset in range(0, len(stream), step):
                 result = conversation.feed(stream[offset:offset + step], offset / (voice.RATE * voice.SAMPLE_BYTES))
                 if result and result.understood:
-                    return parse(normalize_order(result.text)), "listening" in states
-            return None, "listening" in states
+                    return parse(normalize_order(result.text)), "listening" in states, result.text
+            return None, "listening" in states, ""
 
     idle_cpu = None
     if not whisper_path:
@@ -85,9 +85,10 @@ def benchmark(source, whisper_path):
     start_cpu = process_time()
     for name, expected in CASES.items():
         start = perf_counter()
-        intent, activated = command(pcm(name))
+        intent, activated, transcript = command(pcm(name))
         timings.append(perf_counter() - start)
-        results[name] = {"intent": intent, "expected": expected, "activated": activated, "correct": intent == expected}
+        results[name] = {"intent": intent, "expected": expected, "activated": activated, "transcript": transcript,
+                         "correct": intent == expected}
     cpu = process_time() - start_cpu
     try:
         import resource
