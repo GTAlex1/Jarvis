@@ -9,6 +9,7 @@ from setup_server import CATEGORIES, ROLES, MESSAGES, configure
 import contextlib
 from maintenance import maintain, audit
 from permissions_v3 import permissions, finalize
+from community_v4 import community, identity
 
 BG="#0b1020"
 PANEL="#151d32"
@@ -18,7 +19,7 @@ ACC="#67e8f9"
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Nexora | Server Builder 3.0")
+        self.title("Nexora | Server Builder 4.0")
         self.geometry("860x690")
         self.minsize(680,560)
         self.configure(bg=BG)
@@ -57,6 +58,12 @@ class App(tk.Tk):
         self.perms.pack(side="left",padx=(0,8))
         self.finish=ttk.Button(extra,text="Retirar Administrador",command=lambda:self.start("finalize"))
         self.finish.pack(side="left")
+        third=tk.Frame(body,bg=BG)
+        third.pack(fill="x",pady=4)
+        self.community=ttk.Button(third,text="Configurar incorporación",command=lambda:self.start("community"))
+        self.community.pack(side="left",padx=(0,8))
+        self.identity=ttk.Button(third,text="Importar Identity Pack",command=lambda:self.start("identity"))
+        self.identity.pack(side="left")
         self.progress=ttk.Progressbar(body,mode="indeterminate")
         self.progress.pack(fill="x",pady=8)
         tk.Label(body,textvariable=self.status,bg=BG,fg=ACC).pack(anchor="w")
@@ -92,6 +99,8 @@ class App(tk.Tk):
         self.audit.state(["disabled"])
         self.perms.state(["disabled"])
         self.finish.state(["disabled"])
+        self.community.state(["disabled"])
+        self.identity.state(["disabled"])
         self.progress.start(12)
         self.status.set("Conectando a Discord...")
         threading.Thread(target=self.worker,args=(int(raw),token,mode),daemon=True).start()
@@ -118,7 +127,7 @@ class App(tk.Tk):
                         raise RuntimeError("No se encuentra el servidor Nexora indicado.")
                     app.events.put(("log",f"Conectado a {guild.name} ({guild.id})"))
                     with contextlib.redirect_stdout(Sink()):
-                        await {"generate":configure,"maintenance":maintain,"audit":audit,"permissions":permissions,"finalize":finalize}[mode](guild,client)
+                        await {"generate":configure,"maintenance":maintain,"audit":audit,"permissions":permissions,"finalize":finalize,"community":community,"identity":identity}[mode](guild,client)
                 except Exception as exc:
                     errors.append(exc)
                 finally:
@@ -147,6 +156,8 @@ class App(tk.Tk):
                 self.audit.state(["!disabled"])
                 self.perms.state(["!disabled"])
                 self.finish.state(["!disabled"])
+                self.community.state(["!disabled"])
+                self.identity.state(["!disabled"])
                 self.status.set(msg)
         self.after(100,self.poll)
     def close(self):
