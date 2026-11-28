@@ -11,9 +11,15 @@ Nexora es el nombre provisional desde 0.7.0. Se revisará su disponibilidad lega
 | 0.6.4.2 | Voice & Recognition Overhaul. Validación interna de activación continua, reconocimiento, adaptación voluntaria, seguridad y actualizador. |
 | 0.6.5 | Detección universal de aplicaciones y videojuegos para Windows. |
 | 0.6.5.1 | Infraestructura de betatesting, diagnósticos voluntarios, feedback, canales de actualización y recuperación. |
-| 0.6.5.2 | Servidor oficial de Discord y bot comunitario básico. |
+| 0.6.5.2 | Fase A: servidor oficial de Discord. Fase B: bot comunitario e integraciones. |
 | 0.6.5.3 | Nexora Hub con sugerencias, votaciones, feedback, panel de administración y sincronización con Discord. |
 | 0.6.6 | Gaming Intelligence. Perfiles de juego, recursos, audio, notificaciones, comandos en juego y apertura de aplicaciones sin robar el foco cuando el sistema lo permita. |
+
+### Validación física de JARVIS 0.6.4.2
+
+El propietario registró **8 pruebas correctas, 1 parcialmente correcta, 3 fallidas y 1 pendiente**. En su equipo funcionaron la actualización automática desde 0.6.4.1, la conservación de micrófono, perfil y ajustes de seguridad, la activación en una frase y con pausa, la prueba del perfil biométrico, el bloqueo de órdenes ajenas en los escenarios probados y la coexistencia de audio con Discord y WhatsApp.
+
+Sigue pendiente comprobar las activaciones accidentales durante conversaciones y ampliar las pruebas de seguridad con más escenarios y hablantes. También queda por mejorar el reconocimiento de órdenes naturales, incluidas variantes coloquiales como «cerrá Spotify» y «quítame Spotify». La revisión sigue destinada a validación interna.
 
 ### Detección y ejecución de videojuegos
 
@@ -30,7 +36,8 @@ La cobertura prevista incluye Steam, Epic Games, Riot Client, HoYoPlay, Battle.n
 
 Los primeros betatesters externos podrán incorporarse a partir de 0.6.5.1 una vez comprobados el bloqueo de órdenes ajenas, la estabilidad, la coexistencia de audio y la recuperación del actualizador. Los diagnósticos serán voluntarios y excluirán audio y firmas. La beta cerrada oficial sigue prevista para 0.7.0.
 
-En 0.6.5.2 se solicitará crear y configurar el servidor en Discord Web mediante el navegador de Work cuando exista acceso autorizado y sea viable. El servidor incluirá información, anuncios, descargas, changelog, roadmap, comunidad, gaming, sugerencias y votaciones, errores, soporte, canales privados de betatesting y canales de voz. Tendrá integración con GitHub y un bot comunitario.
+- **Fase A · Servidor privado.** Se adelantó el intento de configuración en Discord Web. La creación y la verificación siguen pendientes: la aplicación web se quedó en la pantalla de conexión. La fase incluye información, anuncios, descargas, changelog, roadmap, comunidad, gaming, sugerencias, votaciones, errores, soporte, canales de voz y espacios privados para Insider, Zero Division y administración. La apertura a usuarios externos se decidirá por separado.
+- **Fase B · Bot e integraciones.** Quedan pendientes el bot comunitario, los avisos de GitHub, la publicación automática de versiones y changelogs y la gestión de tickets y del programa Insider. La sincronización con Nexora Hub sigue prevista para 0.6.5.3. La 0.6.5.2 sigue abierta.
 
 Roles previstos: Founder, Developer, Moderator, Zero Division, Nexora Insider, Early Adopter, Member y Nexora. Zero Division será un reconocimiento exclusivo para los betatesters originales.
 
@@ -40,7 +47,7 @@ Roles previstos: Founder, Developer, Moderator, Zero Division, Nexora Insider, E
 | --- | --- |
 | 0.7.0 | Cambio de marca a Nexora, rediseño inspirado en Apple Liquid Glass y beta cerrada oficial. |
 | 0.7.1 | HUD flotante, animaciones e indicadores de actividad. |
-| 0.7.2 | Accesibilidad, dictado y control avanzado por voz. Se evaluará la palabra de activación personalizable. |
+| 0.7.2 | Accesibilidad, dictado, control avanzado por voz y reconocimiento avanzado de variedades lingüísticas. Se evaluará la palabra de activación personalizable. |
 | 0.7.3 | Instalador oficial Nexora-Setup.exe y distribución Nexora-Portable.exe. |
 
 El instalador contempla dependencias y modelos automáticos, migración desde JARVIS, accesos directos, inicio opcional, actualizaciones, reparación, desinstalación y elección sobre conservar o borrar datos. Se prioriza instalar sin administración cuando sea viable y se evaluará la firma digital.
@@ -59,6 +66,7 @@ El instalador contempla dependencias y modelos automáticos, migración desde JA
 | Versión | Alcance |
 | --- | --- |
 | 0.9.0 | Nexora Intelligence, motor local adaptativo. |
+| 0.9.0.1 | Nexora Voice Intelligence. Comprensión contextual, acentos, expresiones regionales, conjugaciones, lenguaje coloquial y adaptación lingüística. Incluirá evaluación con variedades del español de España y Latinoamérica, entre ellas andaluza, mexicana, ecuatoriana, argentina, colombiana y caribeña. |
 | 0.9.1 | Memoria editable y aprendizaje personalizado. |
 | 0.9.2 | Nexora Vision y comprensión visual de la pantalla. |
 | 0.9.3 | Nexora Control, interacción con aplicaciones y automatización visual y web. |
