@@ -45,14 +45,14 @@ async def configure(guild, client):
     me = guild.me
     if me is None or not me.guild_permissions.administrator:
         raise RuntimeError("Para esta configuración inicial, autoriza temporalmente Administrador al bot. Retíralo al terminar.")
-    # Solo servidores vacíos o previamente configurados por esta herramienta.
+    # Conservar categorías ajenas al plan, incluidas las predeterminadas.
     allowed = {c[0] for c in CATEGORIES}
     for c in guild.categories:
         if c.name not in allowed:
-            raise RuntimeError("Categoría ajena al plan; usa un servidor vacío dedicado.")
+            print(f"Se conserva categoría existente: {c.name}")
     roles = {}
     for name, color in ROLES.items():
-        role = unique(guild.roles, name)
+        role = unique([r for r in guild.roles if not r.managed], name)
         if role is None:
             role = await guild.create_role(name=name, colour=discord.Colour(color),
                                            permissions=discord.Permissions.none(), reason="Nexora setup")
