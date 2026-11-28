@@ -13,7 +13,7 @@ Nexora es el nombre provisional desde 0.7.0. Se revisará su disponibilidad lega
 | 0.6.5.1 | Infraestructura de betatesting, diagnósticos voluntarios, feedback, canales de actualización y recuperación. |
 | 0.6.5.2 | Fase A: servidor oficial de Discord. Fase B: bot comunitario e integraciones. |
 | 0.6.5.3 | Nexora Hub con sugerencias, votaciones, feedback, panel de administración y sincronización con Discord. |
-| 0.6.6 | Gaming Intelligence. Perfiles de juego, recursos, audio, notificaciones, comandos en juego y apertura de aplicaciones sin robar el foco cuando el sistema lo permita. |
+| 0.6.6 | Gaming Intelligence. Perfiles de juego, recursos, optimización de audio y llamadas, notificaciones, comandos en juego y apertura de aplicaciones sin robar el foco cuando el sistema lo permita. |
 
 ### Validación física de JARVIS 0.6.4.2
 
@@ -52,7 +52,7 @@ Roles previstos: Founder, Developer, Moderator, Zero Division, Nexora Insider, E
 | Versión | Alcance |
 | --- | --- |
 | 0.7.0 | Cambio de marca a Nexora, rediseño inspirado en Apple Liquid Glass y beta cerrada oficial. |
-| 0.7.1 | HUD flotante, animaciones e indicadores de actividad. |
+| 0.7.1 | HUD flotante, animaciones, indicadores e infraestructura para subtítulos y superposiciones. |
 | 0.7.2 | Accesibilidad, dictado, control avanzado por voz y reconocimiento avanzado de variedades lingüísticas. Se evaluará la palabra de activación personalizable. |
 | 0.7.3 | Instalador oficial Nexora-Setup.exe y distribución Nexora-Portable.exe. |
 
@@ -72,9 +72,10 @@ El instalador contempla dependencias y modelos automáticos, migración desde JA
 | Versión | Alcance |
 | --- | --- |
 | 0.9.0 | Nexora Intelligence, motor local adaptativo. |
-| 0.9.0.1 | Nexora Voice Intelligence. Comprensión contextual, acentos, expresiones regionales, conjugaciones, lenguaje coloquial y adaptación lingüística. Incluirá evaluación con variedades del español de España y Latinoamérica, entre ellas andaluza, mexicana, ecuatoriana, argentina, colombiana y caribeña. |
+| 0.9.0.1 | Nexora Voice Intelligence. Comprensión contextual, reconocimiento multilingüe avanzado, aislamiento de voz, acentos, expresiones regionales, conjugaciones, lenguaje coloquial y adaptación lingüística. Incluirá evaluación con variedades del español de España y Latinoamérica, entre ellas andaluza, mexicana, ecuatoriana, argentina, colombiana y caribeña. |
+| 0.9.0.2 | Nexora Translate. Traducción escrita y hablada bajo demanda y traducción simultánea de audio seleccionado. |
 | 0.9.1 | Memoria editable y aprendizaje personalizado. |
-| 0.9.2 | Nexora Vision y comprensión visual de la pantalla. |
+| 0.9.2 | Nexora Vision y comprensión visual de la pantalla, con futura integración de traducción visual. |
 | 0.9.3 | Nexora Control, interacción con aplicaciones y automatización visual y web. |
 | 0.9.3.1 | Resolución autónoma de tareas y puzles. |
 | 0.9.3.2 | Planificación, verificación y autocorrección. |
@@ -87,6 +88,16 @@ El instalador contempla dependencias y modelos automáticos, migración desde JA
 | 0.9.5 | Catálogo de extensiones e integraciones mediante Nexora Hub. |
 | 0.9.6 | Seguridad avanzada y permisos granulares. |
 | 0.9.7 | Optimización, rendimiento y compatibilidad. |
+
+### Nexora Translate
+
+- **Bajo demanda.** Detectar el idioma, traducir texto y voz a un destino como chino mandarín o japonés, explicar el contexto y ofrecer pronunciación y romanización cuando correspondan.
+- **Audio simultáneo.** Elegir una aplicación, capturar solo su audio si el sistema lo permite, detectar idiomas y omitir las intervenciones ya en el idioma de destino. Mostrar subtítulos en el HUD y reproducir voz traducida cuando se pida. Admitir órdenes para iniciar, pausar y detener.
+- **Traducción visual con Vision.** Aplicar OCR a menús, interfaces o diálogos, superponer el texto traducido y explicar referencias contextuales.
+- **2.0.** Prever la traducción entre dispositivos y un modo intérprete bidireccional con controles claros.
+- **3.0.** Investigar la interpretación de conversaciones grupales. Informar a participantes, recabar consentimiento cuando corresponda y aplicar sus preferencias de privacidad.
+
+0.6.5 mantiene el reconocimiento contextual de aplicaciones. 0.6.6 aborda audio y juegos, 0.7.1 aporta el HUD y 0.9.0.1 prepara el reconocimiento multilingüe avanzado. El motor de traducción corresponde a una fase posterior.
 
 ### Nexora Learn
 
