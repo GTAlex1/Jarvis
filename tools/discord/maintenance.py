@@ -9,7 +9,7 @@ async def maintain(guild,client):
     me=guild.me
     if not me or not me.guild_permissions.administrator:
         raise RuntimeError("Se requiere Administrador temporal.")
-    roles={name:unique([r for r in guild.roles if not r.managed],name) for name in ROLES}
+    roles={name:(unique([r for r in guild.roles if not r.managed],name) or (unique([r for r in guild.roles if not r.managed],"Nexora AI") if name=="Nexora" else None)) for name in ROLES}
     if any(r is None or r >= me.top_role for r in roles.values()):
         raise RuntimeError("Faltan roles o están por encima del bot.")
     categories=[]
@@ -71,7 +71,7 @@ async def maintain(guild,client):
     print("PENDIENTE: retirar Administrador, revisar roles con Discord y limpiar canales iniciales manualmente.")
 
 async def audit(guild,client):
-    roles={name:unique([r for r in guild.roles if not r.managed],name) for name in ROLES}
+    roles={name:(unique([r for r in guild.roles if not r.managed],name) or (unique([r for r in guild.roles if not r.managed],"Nexora AI") if name=="Nexora" else None)) for name in ROLES}
     issues=0
     for icon,(name,mode,access,texts,voices) in zip(ICONS,CATEGORIES):
         category=unique(guild.categories,f"{icon}・{name}") or unique(guild.categories,name)
