@@ -1,5 +1,5 @@
 """Single-use session-bound approvals, independent of desktop UI."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hmac import compare_digest
 from secrets import randbelow, token_urlsafe
 
@@ -21,6 +21,7 @@ class LocalApproval:
 class ApprovalAnswer:
     ticket: str
     yes: bool
+    heard: str = field(default="", compare=False, repr=False)
 
 
 @dataclass(frozen=True)

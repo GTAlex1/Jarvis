@@ -1,6 +1,7 @@
 """Run the voice loop independently of the Tk event loop and command worker."""
 from collections import deque
 from contextlib import ExitStack
+from dataclasses import replace
 import sys
 from concurrent.futures import TimeoutError
 from queue import Empty, SimpleQueue
@@ -16,14 +17,14 @@ from voice_context import ContextOrder, TARGET_ACTIONS, hypotheses
 import english_voice
 from call_audio import PlaybackActivity, contaminated
 from windows_audio import playback_meter
-from dialogue import STOP, Dialogue, Turn, split_speech
+from dialogue import STOP, Dialogue, SelectedCommand, Turn, split_speech
 from speech_cancel import SpeechCancellation
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices, reject_recognition
 from voice_audio import installed_voices, speak
 from voice_diagnostics import LOG, configure as configure_log
 from biometric_audio import MESSAGES, Reason, extract, verify
 from speakers import ENROLLMENT_FRAMES
-from voice_authorization import UNVERIFIED
+from voice_authorization import ApprovalAnswer, UNVERIFIED
 from voice_recognition import (Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector,
                                local_speaker_model, spanish_model, corroborate_wake, safe_redecode)
 
@@ -630,17 +631,19 @@ class VoiceService:
             return Turn(speech="No he entendido la orden. Puedes decir ayuda.", accepted=False)
         if turn.command is None:
             return turn
-        if type(turn.command) is str and intent and intent[0] in TARGET_ACTIONS:
-            names = self.context_names()
+        if type(turn.command) is str:
             hints = ()
-            folded = clean(intent[1])
-            if names and audio and not any(clean(name) == folded for name in names):
-                try:
-                    hints = hypotheses(self.command_model(), audio, intent[0], intent[1], names, settings.language)
-                except ERRORS:
-                    LOG.info("reconocimiento: segunda hipótesis contextual no disponible")
-            turn = Turn(command=ContextOrder(turn.command, hints), speech=turn.speech,
-                        accepted=turn.accepted, end=turn.end, followup=turn.followup)
+            if intent and intent[0] in TARGET_ACTIONS:
+                names = self.context_names()
+                folded = clean(intent[1])
+                if names and audio and not any(clean(name) == folded for name in names):
+                    try:
+                        hints = hypotheses(self.command_model(), audio, intent[0], intent[1], names, settings.language)
+                    except ERRORS:
+                        LOG.info("reconocimiento: segunda hipótesis contextual no disponible")
+            turn = replace(turn, command=ContextOrder(turn.command, hints, transcript.text))
+        elif isinstance(turn.command, (SelectedCommand, ApprovalAnswer)):
+            turn = replace(turn, command=replace(turn.command, heard=transcript.text))
         self.notify("executing")
         reply = self.submit(turn.command, speaker)
         while not self.changed.is_set() and not self.speech_stop.is_set():

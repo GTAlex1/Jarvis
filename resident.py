@@ -471,23 +471,34 @@ class Resident:
         if not reply.set_running_or_notify_cancel():
             return
         revision = self.revision if revision is None else revision
+        heard = getattr(command, "heard", "")
+        if heard:
+            self.record_voice(f"VOZ · {heard}", "you")
+        elif isinstance(command, str):
+            self.record_voice(f"VOZ · {command}", "you")
         if isinstance(command, ApprovalAnswer):
             request = self.pending_approval
             if not request or request.speaker != speaker or not request.matches(VERBAL, command.ticket):
                 LOG.info("permisos: confirmación verbal sin solicitud vigente")
                 reply.set_result("No hay una acción pendiente para esa confirmación.")
             elif command.yes:
+                self.record_voice("Confirmación recibida.", "reply")
                 self.approve(request, reply)
             else:
                 self.clear_approval()
                 LOG.info("permisos: confirmación verbal cancelada")
+                self.record_voice("Acción cancelada.", "reply")
                 reply.set_result("Acción cancelada.")
             return
         self.clear_approval()
-        source = command.command if isinstance(command, SelectedCommand) else command
-        option = command.option.label if isinstance(command, SelectedCommand) else ""
-        title = option or source
-        self.record_voice(f"VOZ · {title}", "you")
+        if isinstance(command, SelectedCommand):
+            self.record_voice(f"Destino confirmado: {command.option.label}.", "reply")
+        else:
+            intent = parse(command)
+            if intent and len(intent) > 1 and intent[0] in {"open", "close", "place", "focus", "restore", "minimize"}:
+                names = {"open": "abrir", "close": "cerrar", "place": "mover",
+                         "focus": "enfocar", "restore": "restaurar", "minimize": "minimizar"}
+                self.record_voice(f"Intención: {names[intent[0]]}.", "reply")
         self.run_voice_action(command, speaker, revision, reply)
 
     def run_voice_action(self, command, speaker, revision, reply, approved=False):
@@ -530,6 +541,8 @@ class Resident:
             self.voice.trace("resultado", "solicitada_a_windows" if category == "open" else "devuelto_por_ejecutor")
         elif isinstance(result, Clarification):
             self.voice.trace("permiso", "destino_por_aclarar")
+            if len(result.options) == 1:
+                self.record_voice(f"Destino probable: {result.options[0].label}.", "reply")
         if (isinstance(command, SelectedCommand) and isinstance(command.command, ContextOrder)
                 and isinstance(result, str) and not result.startswith(("No pude", "No encontré", "Se canceló"))):
             intent = parse(command.command)

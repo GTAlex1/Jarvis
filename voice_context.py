@@ -13,9 +13,10 @@ TARGET_MARKERS = {"es": {"open": "abre", "close": "cierra", "minimize": "minimiz
 
 
 class ContextOrder(str):
-    def __new__(cls, command, hypotheses=()):
+    def __new__(cls, command, hypotheses=(), heard=""):
         obj = super().__new__(cls, command)
         obj.hypotheses = tuple(hypotheses)
+        obj.heard = heard
         return obj
 
 

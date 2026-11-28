@@ -1,5 +1,5 @@
 """Temporary, deterministic dialogue and spoken rendering for JARVIS."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from textwrap import wrap
 
@@ -64,6 +64,7 @@ class Clarification:
 class SelectedCommand:
     command: str
     option: TargetOption
+    heard: str = field(default="", compare=False, repr=False)
 
 
 @dataclass(frozen=True)
