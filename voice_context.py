@@ -43,6 +43,12 @@ def contextual_score(query, label):
     if min(len(x), len(y)) >= 3 and base >= 0.52:
         score = SequenceMatcher(None, x, y, autojunk=False).ratio()
         base = max(base, 0.65 * base + 0.35 * score)
+    if len(spoken) >= 2 and len(full) >= 2 and base >= 0.51:
+        pairs = zip(spoken[:len(full)], full)
+        scores = [phonetic_score(left, right) for left, right in pairs]
+        anchored = max(scores, default=0.0)
+        if anchored >= 0.85:
+            base = max(base, base * 0.78 + 0.22 * sum(scores) / len(scores))
     return base
 
 
