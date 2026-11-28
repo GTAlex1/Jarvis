@@ -205,7 +205,7 @@ class LaunchAndTray(unittest.TestCase):
 
         app = Resident.__new__(Resident)
         for name in ("show", "toggle_microphone", "toggle_startup", "toggle_voice", "open_voice_settings",
-                     "use_spanish", "use_english", "open_speakers", "open_adaptation", "open_security",
+                     "use_spanish", "use_english", "toggle_playback_guard", "open_speakers", "open_adaptation", "open_security",
                      "configure_application_folders", "clear_application_folders", "confirm_voice", "cancel_voice",
                      "update_clicked", "restart", "quit"):
             setattr(app, name, Mock())

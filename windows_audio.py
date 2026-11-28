@@ -28,7 +28,7 @@ def endpoint_id(device):
 
 
 @contextmanager
-def default_input():
+def endpoint_enumerator():
     ole = c.windll.ole32
     ole.CoInitializeEx.argtypes = [c.c_void_p, w.DWORD]
     ole.CoInitializeEx.restype = c.c_long
@@ -46,6 +46,17 @@ def default_input():
         status = ole.CoCreateInstance(clsid, None, 1, iid, c.byref(enumerator))
         if status < 0:
             raise OSError(f"IMMDeviceEnumerator: 0x{status & 0xffffffff:08x}")
+        yield enumerator
+    finally:
+        if enumerator:
+            method(enumerator, 2, w.ULONG)(enumerator)
+        if owns_apartment:
+            ole.CoUninitialize()
+
+
+@contextmanager
+def default_input():
+    with endpoint_enumerator() as enumerator:
         get_endpoint = method(enumerator, 4, c.c_long, c.c_int, c.c_int, c.POINTER(c.c_void_p))
 
         def current():
@@ -61,11 +72,58 @@ def default_input():
                 method(device, 2, w.ULONG)(device)
 
         yield current
-    finally:
-        if enumerator:
-            method(enumerator, 2, w.ULONG)(enumerator)
-        if owns_apartment:
-            ole.CoUninitialize()
+
+
+@contextmanager
+def playback_meter():
+    """Read scalar peaks from media and communications outputs; never capture PCM."""
+    from time import monotonic
+
+    meter_id = (c.c_ubyte * 16).from_buffer_copy(UUID("c02216f6-8c67-4b5b-9d00-d008e73e0064").bytes_le)
+    with endpoint_enumerator() as enumerator:
+        get_endpoint = method(enumerator, 4, c.c_long, c.c_int, c.c_int, c.POINTER(c.c_void_p))
+        meters = []
+        refresh_at = 0.0
+
+        def release():
+            while meters:
+                meter = meters.pop()
+                method(meter, 2, w.ULONG)(meter)
+
+        def read():
+            nonlocal refresh_at
+            now = monotonic()
+            if now >= refresh_at:
+                release()
+                refresh_at = now + 5
+                seen = set()
+                for role in (1, 2):  # eMultimedia, eCommunications
+                    device = c.c_void_p()
+                    if get_endpoint(enumerator, 0, role, c.byref(device)) < 0 or not device:
+                        continue
+                    try:
+                        identifier = endpoint_id(device)
+                        if identifier in seen:
+                            continue
+                        seen.add(identifier)
+                        activate = method(device, 3, c.c_long, c.c_void_p, w.DWORD,
+                                          c.c_void_p, c.POINTER(c.c_void_p))
+                        meter = c.c_void_p()
+                        if activate(device, meter_id, 23, None, c.byref(meter)) >= 0 and meter:
+                            meters.append(meter)
+                    finally:
+                        method(device, 2, w.ULONG)(device)
+            peaks = []
+            for meter in meters:
+                value = c.c_float()
+                if method(meter, 3, c.c_long, c.POINTER(c.c_float))(meter, c.byref(value)) >= 0:
+                    peaks.append(value.value)
+            return max(peaks) if peaks else None
+
+        try:
+            yield read
+        finally:
+            release()
 
 
 def wasapi_endpoint_ids(library, indices):

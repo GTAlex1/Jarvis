@@ -1,5 +1,7 @@
 """Run the voice loop independently of the Tk event loop and command worker."""
 from collections import deque
+from contextlib import ExitStack
+import sys
 from concurrent.futures import TimeoutError
 from queue import Empty, SimpleQueue
 from threading import Event, Lock, Thread
@@ -12,6 +14,8 @@ from permissions import CATEGORIES, classify
 from voice_adaptation import Adaptation
 from voice_context import ContextOrder, TARGET_ACTIONS, hypotheses
 import english_voice
+from call_audio import PlaybackActivity, contaminated
+from windows_audio import playback_meter
 from dialogue import STOP, Dialogue, Turn, split_speech
 from speech_cancel import SpeechCancellation
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices, reject_recognition
@@ -438,6 +442,16 @@ class VoiceService:
                 self.on_test(f"Falló la prueba de {stage}: {error}")
 
     def listen(self, capture, detector, settings, automatic=False):
+        with ExitStack() as stack:
+            meter = None
+            if settings.playback_guard and sys.platform == "win32":
+                try:
+                    meter = stack.enter_context(playback_meter())
+                except OSError:
+                    self.trace("audio", "medidor_de_salida_no_disponible")
+            self.listen_frames(capture, detector, settings, automatic, PlaybackActivity(meter))
+
+    def listen_frames(self, capture, detector, settings, automatic, playback):
         failures = 0
         dialogue = Dialogue(settings.speech_detail, settings.conversational)
         recover = (lambda audio: safe_redecode(self.speech_model(), audio)) if settings.language == "es" else None
@@ -456,6 +470,7 @@ class VoiceService:
             self.meter = (capture.level, capture.label)
             now = monotonic()
             dialogue.expire(now)
+            playback.observe(now)
             if pcm is None:
                 continue
             if exchange.active is None and now - self.model_used > MODEL_IDLE_SECONDS:
@@ -493,6 +508,19 @@ class VoiceService:
                 text in STOP or text in {"deten la operacion", "cancela la orden", "no confirmo la orden"} or
                 (following and text in {"no", "no gracias", "no, gracias", "no cancela la orden"})
             )
+            mixed = playback.overlapped(now)
+            intent = parse(normalize_order(transcript.text))
+            reviewed = bool(dialogue.pending or dialogue.verbal or (intent and classify(intent) != "query"))
+            if reviewed and contaminated(transcript, mixed, bool(dialogue.pending or dialogue.verbal)) and not safe_stop:
+                self.trace("audio", "reproduccion_simultanea_orden_incierta")
+                dialogue.clear()
+                owner = None
+                self.play("La orden se mezcló con otros sonidos. Di Jarvis y repítela.", settings, capture)
+                if self.changed.wait(PLAYBACK_GUARD_SECONDS):
+                    return
+                capture.resume()
+                exchange.reset()
+                continue
             if following and transcript.confidence < 0.73 and not safe_stop:
                 capture.resume()
                 exchange.listen_for_reply(now, max(0, exchange.deadline - now))

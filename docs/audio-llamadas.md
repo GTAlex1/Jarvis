@@ -1,0 +1,11 @@
+# Audio durante llamadas y juegos
+
+Cuando se habla por Discord y la orden se transcribe como «crm», la causa puede ser eco acústico, cableado virtual que mezcla reproducción y micrófono, o dos interlocutores en una sola señal. Que la transcripción mejore al ensordecerse es una pista de reproducción superpuesta. Por sí sola no identifica la ruta ni el tipo de interferencia.
+
+JARVIS excluye entradas claramente identificadas como Stereo Mix, Mezcla estéreo o loopback. Conserva las rutas MME, DirectSound, WASAPI compartida y ASIO configuradas. En **Protección durante reproducción**, Windows puede informar del pico de las salidas predeterminadas multimedia y de comunicaciones. El programa no recibe PCM de salida. Si la reproducción coincide con una transcripción poco clara de una acción o una confirmación, pide repetir y desecha ese turno. Las órdenes claras conservan el flujo normal de biometría y permisos. Si el medidor no está disponible, se mantienen los controles de voz anteriores.
+
+Un medidor indica actividad. No distingue la voz remota de un vídeo ni prueba que haya entrado en el micrófono. La función no es un cancelador de eco ni un separador de hablantes. Los perfiles, umbrales biométricos y preferencias permanecen locales. No se modifica el volumen, el mute, la ruta de Discord, ni la configuración global de Windows.
+
+WebRTC Audio Processing puede cancelar eco si recibe una referencia sincronizada de reproducción y la captura. RNNoise elimina parte del ruido y no separa de forma fiable dos voces. Los APO de Windows dependen del dispositivo y su modo de procesamiento. Antes de introducir un backend de referencia, hay que medir auriculares USB, Bluetooth, altavoces y salidas de comunicaciones distintas de la predeterminada. Las pruebas físicas deben confirmar por separado órdenes del propietario, voz ajena y reproducción sin orden.
+
+Fuentes: [WASAPI loopback](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording), [modos y efectos de Windows](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/audio-signal-processing-modes), [WebRTC Audio Processing](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_processing/include/audio_processing.h), [RNNoise](https://github.com/xiph/rnnoise).

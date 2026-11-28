@@ -144,6 +144,7 @@ class Resident:
             ("Iniciar con Windows", self.autostart, self.toggle_startup),
             ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
             ("Configuración de voz…", False, self.open_voice_settings),
+            ("Protección durante reproducción", self.voice_options.playback_guard, self.toggle_playback_guard),
             ("Voz en español", self.voice_options.language == "es", self.use_spanish),
             ("Voz en inglés…", self.voice_options.language == "en", self.use_english),
             ("Perfiles de voz…", False, self.open_speakers),
@@ -186,6 +187,9 @@ class Resident:
             self.show_voice_status("disabled" if self.microphone else "muted", "")
         self.voice.configure(self.voice_options, self.microphone)
 
+    def toggle_playback_guard(self):
+        self.save_voice(replace(self.voice_options, playback_guard=not self.voice_options.playback_guard))
+
     def toggle_voice(self):
         self.save_voice(replace(self.voice_options, enabled=not self.voice_options.enabled))
 
@@ -198,7 +202,7 @@ class Resident:
     def open_voice_settings(self):
         self.show()
         self.panel.open_voice_settings(
-            self.voice_options, lambda options: self.save_voice(replace(options, language=self.voice_options.language)), self.voice.refresh_catalog,
+            self.voice_options, lambda options: self.save_voice(replace(options, language=self.voice_options.language, playback_guard=self.voice_options.playback_guard)), self.voice.refresh_catalog,
             self.voice.test_microphone, self.voice.cancel_test, lambda: self.voice.meter,
             lambda: self.voice.test_progress,
         )

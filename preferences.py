@@ -90,8 +90,11 @@ class VoiceSettings:
     speech_detail: str = "normal"
     speaker_threshold: int = 72
     language: str = "es"
+    playback_guard: bool = True
 
     def __post_init__(self):
+        if type(self.playback_guard) is not bool:
+            raise ValueError("Protección de reproducción no válida.")
         if self.language not in {"es", "en"}:
             raise ValueError("Idioma de reconocimiento no válido.")
         if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):

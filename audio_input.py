@@ -19,6 +19,8 @@ try:
 except ImportError:
     audioop = None
 
+from call_audio import playback_input
+
 BACKENDS = ("Windows WASAPI", "MME", "Windows DirectSound", "ASIO")
 AUTO_ORDER = ("MME", "Windows DirectSound", "Windows WASAPI", "ASIO")
 DIGITAL_SILENCE = 1.2
@@ -190,7 +192,7 @@ def input_devices(refresh=False):
     for data in available:
         host = hosts[data["hostapi"]]
         api, name, index = host["name"], data["name"].strip(), data["index"]
-        if api not in BACKENDS or not data["max_input_channels"] or "[loopback]" in name.casefold():
+        if api not in BACKENDS or not data["max_input_channels"] or playback_input(name):
             continue
         label = f"{name} ({api})"
         occurrences[label] += 1
