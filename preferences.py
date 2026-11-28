@@ -89,8 +89,11 @@ class VoiceSettings:
     reply_seconds: int = 8
     speech_detail: str = "normal"
     speaker_threshold: int = 72
+    language: str = "es"
 
     def __post_init__(self):
+        if self.language not in {"es", "en"}:
+            raise ValueError("Idioma de reconocimiento no válido.")
         if type(self.enabled) is not bool or not isinstance(self.device, str) or not isinstance(self.voice, str):
             raise ValueError("Configuración de voz no válida.")
         if type(self.speaker_threshold) is not int or not 65 <= self.speaker_threshold <= 90:

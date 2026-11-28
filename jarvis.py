@@ -14,6 +14,7 @@ from app_launch import LaunchMonitor, launch_verified, matches_identity
 from windows_catalog import catalog, start_application, valid_route, web_identity
 from windows_instances import WindowsInstances
 from permissions import ALLOW, BLOCK, classify
+from voice_context import ContextOrder, ContextTitle, TARGET_ACTIONS
 from voice_authorization import ExitAction, LocalApproval, PowerAction, RejectedAction
 
 
@@ -197,6 +198,10 @@ class Desktop:
         self.launch_results = deque(maxlen=12)
         self.on_launch = lambda _result: None
         self.launch_monitor = LaunchMonitor(self.running, start_application, self.launch_changed)
+
+    def context_names(self):
+        return tuple(dict.fromkeys(name for app in self.index.entries for name in
+                                   (commercial_title(app.name), *app.aliases)))[:3500]
 
     def launch_changed(self, result):
         self.launch_results.append(result.message)
@@ -501,6 +506,8 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
     if not parsed:
         return "No entendí la orden. Escribe «ayuda» para ver los comandos disponibles."
     action, *args = parsed
+    if isinstance(command, ContextOrder) and action in TARGET_ACTIONS:
+        args[0] = ContextTitle(args[0], command.hypotheses)
     target = {"selection": selection} if selection is not None else {}
     if policy is not None:
         target["voice"] = True

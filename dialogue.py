@@ -7,11 +7,11 @@ from commands import SPOKEN_NUMBERS, WAKE_WORD, clean, parse
 from permissions import BUTTON, CODE, HOTKEY, VERBAL
 from voice_authorization import ApprovalAnswer, LocalApproval, PowerScheduled
 
-STOP = {"para", "parate", "detente", "cancela", "cancelar", "cancelalo"}
+STOP = {"para", "parate", "detente", "cancela", "cancelar", "cancelalo", "cancel", "stop"}
 INTERRUPT_PHRASES = tuple(f"{WAKE_WORD.casefold()} {verb}" for verb in ("para", "cancela", "detente"))
 NEXT = {"continua", "sigue", "siguiente", "dame mas detalles", "mas detalles", "mas",
         "dame un ejemplo", "un ejemplo", "ejemplo"}
-YES = {"si", "si por favor", "vale", "de acuerdo", "claro"}
+YES = {"si", "si por favor", "vale", "de acuerdo", "claro", "yes", "yes please"}
 NO = {"no", "no gracias"}
 REPEAT = {"repite", "repitelo", "repite eso", "dilo otra vez", "otra vez"}
 ORDINALS = ("primer", "segund", "tercer", "cuart", "quint", "sext", "septim", "octav", "noven", "decim")

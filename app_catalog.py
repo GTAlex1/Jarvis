@@ -9,6 +9,7 @@ from threading import Lock
 from time import time
 
 from command_language import phonetic_score, simplify
+from voice_context import contextual_score
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,8 @@ def labels(app):
 
 def resolve(query, items, names):
     """Return possible targets and whether the user must confirm a fuzzy match."""
+    hints = tuple(map(name_key, getattr(query, "hypotheses", ())))
+    contextual = hasattr(query, "hypotheses")
     query = name_key(query)
     if not query:
         return (), False
@@ -56,10 +59,12 @@ def resolve(query, items, names):
         return (), False
     ranked = []
     for item, keys in candidates:
-        score = max((max(phonetic_score(query, key), 0.88 if (
+        score = max((max((contextual_score if contextual else phonetic_score)(query, key), 0.88 if (
             key.startswith(query) or query == "".join(word[0] for word in key.split())
         ) else 0) for key in keys), default=0)
-        if score >= 0.70:
+        if score >= 0.57 and any(hint in keys for hint in hints):
+            score = max(score, 0.87)
+        if score >= (0.64 if contextual else 0.70):
             ranked.append((score, item))
     ranked.sort(key=lambda entry: -entry[0])
     return tuple(item for score, item in ranked[:5] if score >= ranked[0][0] - 0.13), bool(ranked)

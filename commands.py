@@ -73,6 +73,8 @@ LIST_COMMANDS = {
     "estado del arranque": "launch_status", "estado de lanzamiento": "launch_status",
     "actualiza aplicaciones": "refresh_apps", "actualizar catalogo": "refresh_apps",
     "pantallas": "screens", "monitores": "screens", "lista pantallas": "screens",
+    "help": "help", "list windows": "windows", "list apps": "apps",
+    "refresh apps": "refresh_apps", "launch status": "launch_status",
     "ayuda": "help", "ayudame": "help", "dime como puedes ayudarme": "help",
     "que puedes hacer": "help", "comandos": "help", "salir": "exit",
 }

@@ -10,6 +10,8 @@ from commands import WAKE_WORD, clean, parse
 from command_language import normalize_order
 from permissions import CATEGORIES, classify
 from voice_adaptation import Adaptation
+from voice_context import ContextOrder, TARGET_ACTIONS, hypotheses
+import english_voice
 from dialogue import STOP, Dialogue, Turn, split_speech
 from speech_cancel import SpeechCancellation
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices, reject_recognition
@@ -86,6 +88,8 @@ class VoiceService:
         self.config = VoiceSettings(), True
         self.thread = None
         self.last_state = None
+        self.english = None
+        self.context_names = lambda: ()
         self.model = None
         self.model_used = 0.0
 
@@ -174,8 +178,16 @@ class VoiceService:
         self.model_used = monotonic()
         return self.model
 
+    def command_model(self):
+        if self.config[0].language == "en":
+            if self.english is None:
+                self.english = english_voice.load()
+            self.model_used = monotonic()
+            return self.english
+        return self.speech_model()
+
     def recognize(self):
-        return SpanishRecognizer(self.speech_model())
+        return SpanishRecognizer(self.command_model())
 
     def list_options(self):
         try:
@@ -203,7 +215,7 @@ class VoiceService:
         try:
             self.run_loop()
         finally:
-            self.model = self.speaker_model = None
+            self.model = self.speaker_model = self.english = None
             self.meter = (0, "")
 
     def run_loop(self):
@@ -239,12 +251,12 @@ class VoiceService:
                         self.on_test("Prueba cancelada.")
                 continue
             if not settings.enabled or not microphone:
-                self.model = self.speaker_model = None
+                self.model = self.speaker_model = self.english = None
                 self.notify("disabled" if microphone else "muted")
                 self.changed.wait()
                 continue
             if self.biometrics and (self.profile_error or not self.profiles):
-                self.model = self.speaker_model = None
+                self.model = self.speaker_model = self.english = None
                 self.notify("profile_damaged" if self.profile_error else "profiles",
                             MESSAGES[Reason.DAMAGED if self.profile_error else Reason.MISSING])
                 self.changed.wait()
@@ -428,8 +440,8 @@ class VoiceService:
     def listen(self, capture, detector, settings, automatic=False):
         failures = 0
         dialogue = Dialogue(settings.speech_detail, settings.conversational)
-        exchange = Conversation(detector, self.recognize, self.notify,
-                                lambda audio: safe_redecode(self.speech_model(), audio))
+        recover = (lambda audio: safe_redecode(self.speech_model(), audio)) if settings.language == "es" else None
+        exchange = Conversation(detector, self.recognize, self.notify, recover)
         owner = None
         threshold = settings.speaker_threshold / 100
         self.notify("waiting", capture.notice)
@@ -447,7 +459,7 @@ class VoiceService:
             if pcm is None:
                 continue
             if exchange.active is None and now - self.model_used > MODEL_IDLE_SECONDS:
-                self.model = self.speaker_model = None
+                self.model = self.speaker_model = self.english = None
             if not signal_reported and capture.level >= 3:
                 self.trace("audio", "señal_recibida")
                 signal_reported = True
@@ -518,12 +530,12 @@ class VoiceService:
                 else:
                     owner = speaker
                     self.notify("processing")
-                    turn = self.interpret(transcript, dialogue, settings, now, speaker)
+                    turn = self.interpret(transcript, dialogue, settings, now, speaker, audio)
             else:
                 owner = UNVERIFIED
                 self.trace("hablante", "verificación_desactivada_por_usuario")
                 self.notify("processing")
-                turn = self.interpret(transcript, dialogue, settings, now, owner)
+                turn = self.interpret(transcript, dialogue, settings, now, owner, bytes(exchange.audio))
             if self.changed.is_set():
                 return
             if following and not turn.accepted and not turn.end:
@@ -565,7 +577,7 @@ class VoiceService:
         if automatic and failures >= RECOGNITION_FAILURES:
             raise RecognitionRouteError("Dos activaciones consecutivas sin una orden reconocida.")
 
-    def interpret(self, transcript, dialogue, settings, now, speaker=None):
+    def interpret(self, transcript, dialogue, settings, now, speaker=None, audio=b""):
         if speaker is None:
             return Turn(end=True, accepted=False)
         if not transcript.understood or (dialogue.verbal and transcript.confidence < 0.73):
@@ -590,6 +602,17 @@ class VoiceService:
             return Turn(speech="No he entendido la orden. Puedes decir ayuda.", accepted=False)
         if turn.command is None:
             return turn
+        if type(turn.command) is str and intent and intent[0] in TARGET_ACTIONS:
+            names = self.context_names()
+            hints = ()
+            folded = clean(intent[1])
+            if names and audio and not any(clean(name) == folded for name in names):
+                try:
+                    hints = hypotheses(self.command_model(), audio, intent[0], intent[1], names, settings.language)
+                except ERRORS:
+                    LOG.info("reconocimiento: segunda hipótesis contextual no disponible")
+            turn = Turn(command=ContextOrder(turn.command, hints), speech=turn.speech,
+                        accepted=turn.accepted, end=turn.end, followup=turn.followup)
         self.notify("executing")
         reply = self.submit(turn.command, speaker)
         while not self.changed.is_set() and not self.speech_stop.is_set():
