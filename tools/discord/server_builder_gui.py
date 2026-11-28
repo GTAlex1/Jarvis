@@ -8,6 +8,7 @@ import discord
 from setup_server import CATEGORIES, ROLES, MESSAGES, configure
 import contextlib
 from maintenance import maintain, audit
+from permissions_v3 import permissions, finalize
 
 BG="#0b1020"
 PANEL="#151d32"
@@ -17,7 +18,7 @@ ACC="#67e8f9"
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Nexora | Server Builder")
+        self.title("Nexora | Server Builder 3.0")
         self.geometry("860x690")
         self.minsize(680,560)
         self.configure(bg=BG)
@@ -50,6 +51,12 @@ class App(tk.Tk):
         self.maintenance.pack(side="left",padx=(0,8))
         self.audit=ttk.Button(bar,text="Auditar",command=lambda:self.start("audit"))
         self.audit.pack(side="left")
+        extra=tk.Frame(body,bg=BG)
+        extra.pack(fill="x",pady=4)
+        self.perms=ttk.Button(extra,text="Configurar permisos v3",command=lambda:self.start("permissions"))
+        self.perms.pack(side="left",padx=(0,8))
+        self.finish=ttk.Button(extra,text="Retirar Administrador",command=lambda:self.start("finalize"))
+        self.finish.pack(side="left")
         self.progress=ttk.Progressbar(body,mode="indeterminate")
         self.progress.pack(fill="x",pady=8)
         tk.Label(body,textvariable=self.status,bg=BG,fg=ACC).pack(anchor="w")
@@ -74,6 +81,7 @@ class App(tk.Tk):
         if not raw.isascii() or not raw.isdigit() or not token:
             messagebox.showerror("Datos necesarios","Introduce un ID numérico y el token del bot.")
             return
+        if mode=="finalize" and not messagebox.askyesno("Finalizar","¿Has revisado los permisos y terminado todas las operaciones? El bot perderá Administrador."): return
         if mode!="audit" and not messagebox.askyesno("Confirmar",f"Operación {mode} en Nexora {raw}. Puede modificar configuración y permisos. Usa solo un servidor dedicado."):
             return
         self.token.set("")
@@ -82,6 +90,8 @@ class App(tk.Tk):
         self.preview.state(["disabled"])
         self.maintenance.state(["disabled"])
         self.audit.state(["disabled"])
+        self.perms.state(["disabled"])
+        self.finish.state(["disabled"])
         self.progress.start(12)
         self.status.set("Conectando a Discord...")
         threading.Thread(target=self.worker,args=(int(raw),token,mode),daemon=True).start()
@@ -108,7 +118,7 @@ class App(tk.Tk):
                         raise RuntimeError("No se encuentra el servidor Nexora indicado.")
                     app.events.put(("log",f"Conectado a {guild.name} ({guild.id})"))
                     with contextlib.redirect_stdout(Sink()):
-                        await {"generate":configure,"maintenance":maintain,"audit":audit}[mode](guild,client)
+                        await {"generate":configure,"maintenance":maintain,"audit":audit,"permissions":permissions,"finalize":finalize}[mode](guild,client)
                 except Exception as exc:
                     errors.append(exc)
                 finally:
@@ -135,6 +145,8 @@ class App(tk.Tk):
                 self.preview.state(["!disabled"])
                 self.maintenance.state(["!disabled"])
                 self.audit.state(["!disabled"])
+                self.perms.state(["!disabled"])
+                self.finish.state(["!disabled"])
                 self.status.set(msg)
         self.after(100,self.poll)
     def close(self):
