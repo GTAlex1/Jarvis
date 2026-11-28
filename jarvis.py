@@ -445,7 +445,10 @@ class Desktop:
                 raise c.WinError(c.get_last_error())
             if game:
                 include = launcher != "keep" and self.lifecycle_settings.allows(game, launcher == "associated")
-                if self.lifecycle.submit(game, owner, catalog, include, guard):
+                authorized = lambda: self.lifecycle_settings.allows(game, launcher == "associated") and (
+                    guard is None or guard()
+                )
+                if self.lifecycle.submit(game, owner, catalog, include, authorized):
                     return f"Solicité cerrar «{name}». Comprobaré el cierre en segundo plano."
             if launcher == "associated":
                 return f"Solicité cerrar «{name}». No pude verificar un launcher asociado."

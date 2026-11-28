@@ -126,7 +126,9 @@ def benchmark(source, whisper_path, cpp=None, ggml=None, vulkan=False):
     cpu = process_time() + child_cpu() - start_cpu
     try:
         import resource
-        peak = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1) if sys.platform == "linux" else None
+        peak = (round(max(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+                          resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss) / 1024, 1)
+                if sys.platform == "linux" else None)
     except ImportError:
         peak = None
     return {"cases": results, "correct": sum(item["correct"] for item in results.values()),

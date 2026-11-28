@@ -186,7 +186,7 @@ class LaunchAndTray(unittest.TestCase):
         from tray_theme import ICONS, appearance
         from windows_tray import ActiveInstance, handover_kind
         from updater import VERSION
-        self.assertEqual(VERSION, "0.6.5-rc.2")
+        self.assertEqual(VERSION, "0.6.5-rc.3")
         variants = [appearance(state)[0] for state in
                     ("waiting", "listening", "processing", "executing", "unavailable", "muted")]
         self.assertEqual(len(set(variants)), 6)

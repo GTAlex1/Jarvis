@@ -154,7 +154,7 @@ class Resident:
             ("Añadir carpeta de aplicaciones…", False, self.configure_application_folders),
             ("Quitar carpetas adicionales…", False, self.clear_application_folders),
             *((("Cierre de videojuegos y launchers…", self.assistant.desktop.lifecycle_settings.enabled,
-                self.configure_lifecycle),) if hasattr(self, "assistant") and "configure_lifecycle" in dir(self) else ()),
+                self.configure_lifecycle),) if hasattr(self, "assistant") and hasattr(self.assistant.desktop, "lifecycle_settings") else ()),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,

@@ -1,5 +1,14 @@
 # Cambios de JARVIS
 
+## 0.6.5-rc.3 · Canal experimental
+
+- Añade canales persistentes, regreso confirmado a estable y bloqueo de versiones retiradas.
+- Usa el cliente registrado de HoYoPlay cuando falta el acceso específico y vigila el arranque y cierre del juego en segundo plano.
+- Conserva el launcher si no puede verificar descargas, instalaciones u otras dependencias.
+- Separa voz oída, intención, candidato y confirmación en el historial.
+- Excluye entradas de mezcla y pide repetir órdenes dudosas durante reproducción simultánea. Documenta la evaluación local de motores y las pruebas pendientes en Vulkan.
+- Planifica Nexora Translate para versiones futuras.
+
 ## 0.6.5-rc.2 · Correcciones de la candidata
 
 - Corrige la referencia a game_roots sin inicializar. Cada fuente del catálogo puede fallar sin esconder las demás.

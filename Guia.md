@@ -199,7 +199,7 @@ El corpus incluye tres casos que no deben producir ninguna acción. faster-whisp
 
 ### Versionado, canales y recuperación
 
-Usa `mayor.menor.parche` o `mayor.menor.parche.revisión`. Las etiquetas preliminares usan `-alpha.N`, `-beta.N` y `-rc.N` con un número positivo. Para la misma base, Alpha precede a Beta, RC y la versión final. El canal estable busca etiquetas numéricas completas, el futuro canal beta podrá recibir Beta y RC, y desarrollo podrá recibir Alpha. El selector público de canales queda en el roadmap. Las versiones borrador y activos de otro formato se omiten.
+Usa `mayor.menor.parche` o `mayor.menor.parche.revisión`. Las etiquetas preliminares usan `-alpha.N`, `-beta.N` y `-rc.N` con un número positivo. Para la misma base, Alpha precede a Beta, RC y la versión final. El canal estable busca etiquetas numéricas completas, el futuro canal beta podrá recibir Beta y RC, y desarrollo podrá recibir Alpha. Desde rc.3, el menú ofrece Estable y Experimental, que incluye Beta, RC y Alpha publicadas como prereleases. Las versiones borrador y activos de otro formato se omiten.
 
 0.6.4.2 se identifica como validación interna en las notas. Usa etiqueta numérica y el formato de publicación que el actualizador 0.6.4.1 ya sabe leer. No se marca como release principal de GitHub. Los clientes 0.6.4 y anteriores deberán reemplazar manualmente el ejecutable una sola vez con JARVIS cerrado. Después, **Actualizar y reiniciar** verifica la huella SHA-256 y el recibo de arranque. Si la versión llega a iniciarse pero el recibo es inválido o falta, el auxiliar cierra únicamente el proceso lanzado y restaura la copia anterior. El registro indica la ubicación de esa copia si Windows impide restaurarla.
 
@@ -239,3 +239,15 @@ Para empezar a probar, consulta el [listado de órdenes](README.md#órdenes-de-w
 6. Verifica los seis iconos en bandeja clara y oscura. Prueba reinicio, salida completa y apertura con otra instancia activa.
 
 La redacción contextual y el seguimiento de arranque tienen pruebas automatizadas. El reconocimiento del acento, las PWA de tu navegador y los juegos instalados requieren la comprobación anterior.
+
+
+### Comprobaciones físicas de 0.6.5-rc.3
+
+1. Cierra la versión residente anterior, descarga una vez JARVIS.exe de la [prerelease experimental](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.5-rc.3) y reemplaza el ejecutable en su ubicación. Conserva una copia de la versión anterior. Activa **Canal experimental** y comprueba que persiste al reiniciar.
+2. Abre Honkai Star Rail sin acceso directo. Pulsa **Jugar** si HoYoPlay lo exige. Consulta «estado del arranque» antes y después del inicio real. Repite con Rocket League por Epic y con Steam.
+3. Cierra Rocket League, Fortnite, Genshin y Honkai. Comprueba qué ocurre si vuelve el launcher, hay otro juego, una descarga o una instalación. Prueba la orden que mantiene HoYoPlay abierto y las excepciones configurables.
+4. Prueba Chrome durante una llamada, con auriculares y después con altavoces. Distingue voz del propietario, voces ajenas y reproducción sin orden. Repite con y sin **Protección durante reproducción** manteniendo la biometría.
+5. Pronuncia nombres extranjeros dentro de órdenes españolas. Confirma Honkai diciendo «sí» y comprueba que el historial muestra lo oído y una línea aparte para el destino.
+6. Tras cerrar los juegos, prueba el cambio a **Canal estable**. Revisa la versión ofrecida antes de autorizar el regreso. Tus preferencias y perfiles permanecen en Windows.
+
+[Audio en llamadas](docs/audio-llamadas.md) · [Motores de voz](docs/evaluacion-motores.md) · [Canales](docs/actualizaciones.md) · [Cierre de launchers](docs/gestion-launchers.md)

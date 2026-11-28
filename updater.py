@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.6.5-rc.2"
+VERSION = "0.6.5-rc.3"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
@@ -138,7 +138,7 @@ VERSION_TAG = re.compile(
 )
 STAGES = {"alpha": 0, "beta": 1, "rc": 2, "": 3}
 CHANNELS = {"stable": {3}, "experimental": {0, 1, 2, 3}, "beta": {1, 2, 3}, "development": {0, 1, 2, 3}}
-POLICY_URL = f"https://raw.githubusercontent.com/{REPO}/dev/0.6.5-universal-apps/assets/release-policy.json"
+POLICY_URL = f"https://raw.githubusercontent.com/{REPO}/refs/heads/dev/0.6.5-universal-apps/assets/release-policy.json"
 POLICY_FILE = Path(__file__).resolve().parent / "assets/release-policy.json"
 BLOCKED = {"defectuosa", "retirada"}
 
@@ -159,13 +159,16 @@ def release_policy(remote=False):
         with urlopen(POLICY_URL, timeout=7) as response:
             sources.append(json.loads(response.read(96 * 1024)))
     for document in sources:
-        if document.get("schema") != 1 or not isinstance(document.get("versions"), dict):
+        if not isinstance(document, dict) or document.get("schema") != 1 or not isinstance(document.get("versions"), dict):
             raise ValueError("Registro de versiones no válido.")
         for tag, record in document["versions"].items():
-            previous = versions.get(version_tuple(tag), {})
+            if not isinstance(record, dict) or record.get("channel") not in {"stable", "experimental"}:
+                raise ValueError("Entrada del registro de versiones no válida.")
+            version = version_tuple(tag)
+            previous = versions.get(version, {})
             # A stale remote registry must never reactivate a blocked binary.
             if previous.get("status") not in BLOCKED:
-                versions[version_tuple(tag)] = record
+                versions[version] = record
     return versions
 
 

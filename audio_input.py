@@ -69,6 +69,8 @@ def same_name(first, second):
 class Inputs:
     devices: tuple
     mappers: tuple
+    playback_endpoints: frozenset = frozenset()
+    playback_defaults: bool = False
 
     def uses_default(self, selection):
         return not selection or any(route.legacy_key == selection for route in self.mappers)
@@ -102,6 +104,8 @@ class Inputs:
             return set()
 
     def routes_for(self, selection, endpoint=None, interface="", preferred=""):
+        if self.uses_default(selection) and (endpoint in self.playback_endpoints or self.playback_defaults and not endpoint):
+            raise CaptureError("La entrada predeterminada es una mezcla de reproducción. Elige un micrófono físico.")
         prefer_mapper = selection if self.uses_default(selection) else ""
         selection, interface = self.migrate(selection, interface)
         fallback = self.mappers
@@ -188,11 +192,18 @@ def input_devices(refresh=False):
             except OSError as error:
                 LOG.warning("captura identidad WASAPI: %s", error)
     routes = []
+    blocked = set()
+    playback_defaults = False
     occurrences = Counter()
     for data in available:
         host = hosts[data["hostapi"]]
         api, name, index = host["name"], data["name"].strip(), data["index"]
-        if api not in BACKENDS or not data["max_input_channels"] or playback_input(name):
+        if api not in BACKENDS or not data["max_input_channels"]:
+            continue
+        if playback_input(name):
+            if endpoint := endpoints.get(index):
+                blocked.add(endpoint)
+            playback_defaults |= index == host["default_input_device"]
             continue
         label = f"{name} ({api})"
         occurrences[label] += 1
@@ -201,7 +212,8 @@ def input_devices(refresh=False):
         routes.append(Route(index, name, api, round(data["default_samplerate"]),
                             data["max_input_channels"], f"{label} #{occurrences[label]}",
                             index == host["default_input_device"], mapper, endpoints.get(index, ""), mix.get(index)))
-    return group_routes(routes)
+    grouped = group_routes(routes)
+    return Inputs(grouped.devices, grouped.mappers, frozenset(blocked), playback_defaults)
 
 
 @dataclass(frozen=True)

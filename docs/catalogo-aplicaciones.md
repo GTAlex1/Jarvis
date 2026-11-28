@@ -1,6 +1,6 @@
 # Catálogo de aplicaciones y videojuegos de JARVIS
 
-Estado de la versión 0.6.5-rc.2: candidata de validación interna. La cobertura depende de los metadatos que cada cliente exponga en el equipo.
+Estado de la versión 0.6.5-rc.3: candidata de validación interna. La cobertura depende de los metadatos que cada cliente exponga en el equipo.
 
 ## Arquitectura
 
@@ -17,7 +17,7 @@ Estado de la versión 0.6.5-rc.2: candidata de validación interna. La cobertura
 | Steam | Registro, rutas habituales, `libraryfolders.vdf` y `appmanifest_*.acf` | Solicitud por ID a Steam. Comprueba una ventana del juego bajo la biblioteca detectada. |
 | Epic Games | Manifiestos `.item` y accesos directos del cliente | Activación del producto con el protocolo de Epic; se comprueba el ejecutable o la ventana del juego. |
 | Riot Client | Accesos del cliente, registro y asociaciones en `RiotClientInstalls.json` | Abre el acceso específico. Riot puede pedir pulsar **Jugar** en la ficha; el cliente por sí solo no confirma el arranque. |
-| HoYoPlay | Accesos directos compatibles y metadatos publicados por el instalador | Usa el acceso del juego cuando existe. Si solo hay metadatos, solicita crear el acceso desde el cliente. |
+| HoYoPlay | Accesos directos compatibles y metadatos publicados por el instalador | Prioriza el acceso del juego. Con metadatos y cliente registrado abre HoYoPlay e indica qué juego seleccionar. |
 | Xbox / PC Game Pass | Paquetes registrados, AUMID y `MicrosoftGame.config` accesible | Activación por Windows, sujeta a licencia, edición e inicio de sesión. Los paquetes con metadatos restringidos pueden aparecer como una aplicación genérica de Windows. |
 | EA App | Accesos directos compatibles y metadatos de desinstalación | Lanza solo cuando dispone de una ruta específica del juego; si no, muestra que falta la ruta. |
 | Ubisoft Connect | Accesos directos, claves de instalación y productos que incluyen el nombre | Solicitud `uplay://launch/` con el ID instalado o acceso directo. |
@@ -30,3 +30,5 @@ El índice nunca ejecuta `UninstallString`, ni toma la frase del usuario como ru
 Referencias: [identidades de aplicación en Windows](https://learn.microsoft.com/es-es/windows/configuration/store/find-aumid), [registro de aplicaciones Win32](https://learn.microsoft.com/en-us/windows/win32/shell/app-registration), [activación por protocolo de Epic](https://dev.epicgames.com/docs/epic-games-store/protocol-activation) y [flujo de inicio de Riot](https://support.riotgames.com/en-us/riot/client/riot-client-faq).
 
 Cada lectura se aísla por fuente. Una fuente fallida puede recuperar fichas válidas de la generación anterior. Un acceso a Minecraft Java puede abrir la selección del launcher; en esa ruta, JARVIS no verifica instancias Java genéricas. La edición Bedrock usa la identidad registrada en Windows cuando está disponible. Se conservan las rutas específicas de los clientes y sus comprobaciones de autenticación y anticheat.
+
+El cierre asíncrono usa la identidad del programa, el proveedor y la sesión. Consulta [gestión segura de launchers](gestion-launchers.md).

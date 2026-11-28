@@ -42,7 +42,7 @@ Si necesitas distinguir problemas del controlador y del reconocimiento, abre `%L
 
 ## Catálogo de aplicaciones y videojuegos
 
-La candidata **0.6.5-rc.2** incorpora un catálogo de Windows, tiendas, accesos locales y carpetas portables. Di `actualiza aplicaciones` tras instalar un programa o configura una carpeta desde la bandeja. Si el launcher requiere pulsar **Jugar**, JARVIS deja el arranque del juego sin confirmar. Si hay varias coincidencias, puedes elegir una por nombre o número.
+La candidata **0.6.5-rc.3** conserva un catálogo de Windows, tiendas, accesos locales y carpetas portables. Di `actualiza aplicaciones` tras instalar un programa o configura una carpeta desde la bandeja. Si el launcher requiere pulsar **Jugar**, JARVIS deja el arranque del juego sin confirmar. Si hay varias coincidencias, puedes elegir una por nombre o número.
 
 Consulta la [cobertura y restricciones por proveedor](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/docs/catalogo-aplicaciones.md) y la [lista de pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#validación-física-de-065).
 
@@ -53,6 +53,12 @@ JARVIS relaciona las PWA con su ventana y muestra nombres comerciales como **Epi
 La bandeja permite cambiar entre reconocimiento local en español e inglés. Los nombres extranjeros dentro de una orden española reciben sugerencias contextuales. Puedes guardar voluntariamente una corrección desde la bandeja. La X oculta JARVIS. Para liberar el micrófono y terminar la sesión, elige **Salir completamente**.
 
 [Comandos y pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#comprobaciones-físicas-de-065-rc2) · [Iconos y sustitución de instancias](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/docs/bandeja.md)
+
+## Canal experimental y cierres en rc.3
+
+[Descarga inicial de rc.3](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.5-rc.3). Después activa **Canal experimental** en la bandeja para recibir otras candidatas. JARVIS separa lo transcrito del destino confirmado. También vigila el cierre de juegos y deja el launcher abierto si no puede confirmar que está libre.
+
+[Canales, privacidad y validación](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#comprobaciones-físicas-de-065-rc3)
 
 ## Órdenes y atajos
 

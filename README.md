@@ -75,11 +75,13 @@ JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa *
 
 Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub Actions compila y prueba la aplicación en Windows antes de publicar el ejecutable.
 
+Elige **Canal estable** o **Canal experimental** en la bandeja. Para llegar desde rc.2 o una versión anterior, instala una vez el ejecutable de [la prerelease rc.3](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.5-rc.3). A partir de ahí recibirás candidatas desde JARVIS si activas el canal experimental. [Canales y regreso a estable](docs/actualizaciones.md) · [Registro de versiones](docs/versiones-defectuosas.md)
+
 ## Catálogo de aplicaciones y juegos
 
-La candidata **0.6.5-rc.2** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. El catálogo incluye accesos PWA con identidad propia. Consulta el resultado posterior con «estado del arranque». Para añadir una carpeta de otro disco, usa **Añadir carpeta de aplicaciones…** en la bandeja.
+La candidata **0.6.5-rc.3** conserva aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. El catálogo incluye accesos PWA con identidad propia. Consulta el resultado posterior con «estado del arranque». Para añadir una carpeta de otro disco, usa **Añadir carpeta de aplicaciones…** en la bandeja.
 
-Puedes probar `abre el visual`, `abre el navegador`, `pon el honkai en la segunda pantalla` o `open the calculator` con los nombres y alias que ofrezca tu instalación. JARVIS te pedirá elegir si hay varios destinos o si reconoce un nombre aproximado. Los launchers pueden requerir sesión, actualización o pulsar **Jugar**. JARVIS distingue entre solicitar el arranque y observar el juego abierto.
+Puedes probar `abre el visual`, `abre el navegador`, `pon el honkai en la segunda pantalla` o `open the calculator` con los nombres y alias que ofrezca tu instalación. JARVIS te pedirá elegir si hay varios destinos o si reconoce un nombre aproximado. Los launchers pueden requerir sesión, actualización o pulsar **Jugar**. JARVIS comprueba el cierre de juegos y conserva el cliente si desconoce su actividad. [Gestión de launchers](docs/gestion-launchers.md) JARVIS distingue entre solicitar el arranque y observar el juego abierto.
 
 Consulta la [cobertura por proveedor](docs/catalogo-aplicaciones.md), la [guía de comprobaciones físicas](Guia.md#validación-física-de-065) y el [listado de órdenes](#órdenes-de-windows).
 
@@ -89,6 +91,7 @@ Consulta la [cobertura por proveedor](docs/catalogo-aplicaciones.md), la [guía 
 | --- | --- |
 | Abrir una aplicación o juego | `abre VSCode`, `abre Chrome` |
 | Ver el último arranque | «estado del arranque» o «launch status» |\n| Ver y actualizar el catálogo | `aplicaciones`, `actualiza aplicaciones`; `ventanas` muestra lo que está abierto |
+| Comprobar el cierre de un juego y su cliente | «cierra Rocket League y su launcher», «cierra Honkai, pero deja HoYoPlay abierto» |
 | Cerrar una ventana | `cierra Chrome`, `cierra el Bloc de notas` |
 | Minimizar y restaurar | `minimiza Chrome`, `restaura Firefox` |
 | Primer plano | `enfoca Spotify`, `activa VSCode` |
