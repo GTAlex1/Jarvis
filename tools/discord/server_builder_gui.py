@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 import discord
 from setup_server import CATEGORIES, ROLES, MESSAGES, configure
 import contextlib
+from maintenance import maintain, audit
 
 BG="#0b1020"
 PANEL="#151d32"
@@ -44,7 +45,11 @@ class App(tk.Tk):
         self.preview=ttk.Button(bar,text="Simular estructura",command=self.simulate)
         self.preview.pack(side="left",padx=(0,8))
         self.apply=ttk.Button(bar,text="Generar servidor",command=self.start)
-        self.apply.pack(side="left")
+        self.apply.pack(side="left",padx=(0,8))
+        self.maintenance=ttk.Button(bar,text="Personalizar",command=lambda:self.start("maintenance"))
+        self.maintenance.pack(side="left",padx=(0,8))
+        self.audit=ttk.Button(bar,text="Auditar",command=lambda:self.start("audit"))
+        self.audit.pack(side="left")
         self.progress=ttk.Progressbar(body,mode="indeterminate")
         self.progress.pack(fill="x",pady=8)
         tk.Label(body,textvariable=self.status,bg=BG,fg=ACC).pack(anchor="w")
@@ -63,22 +68,24 @@ class App(tk.Tk):
             self.write(f"{name} [{mode}]")
             self.write("  "+", ".join(texts.split()+[v for v in voices.split("|") if v]))
         self.write(f"{len(ROLES)} roles · {len(MESSAGES)} mensajes iniciales")
-    def start(self):
+    def start(self,mode="generate"):
         raw=self.guild.get().strip()
         token=self.token.get().strip()
         if not raw.isascii() or not raw.isdigit() or not token:
             messagebox.showerror("Datos necesarios","Introduce un ID numérico y el token del bot.")
             return
-        if not messagebox.askyesno("Confirmar","Aplicar configuración al servidor Nexora "+raw+"? Se modificarán permisos de categorías gestionadas. Usa solo un servidor dedicado."):
+        if mode!="audit" and not messagebox.askyesno("Confirmar",f"Operación {mode} en Nexora {raw}. Puede modificar configuración y permisos. Usa solo un servidor dedicado."):
             return
         self.token.set("")
         self.busy=True
         self.apply.state(["disabled"])
         self.preview.state(["disabled"])
+        self.maintenance.state(["disabled"])
+        self.audit.state(["disabled"])
         self.progress.start(12)
         self.status.set("Conectando a Discord...")
-        threading.Thread(target=self.worker,args=(int(raw),token),daemon=True).start()
-    def worker(self,guild_id,token):
+        threading.Thread(target=self.worker,args=(int(raw),token,mode),daemon=True).start()
+    def worker(self,guild_id,token,mode):
         app=self
         class Sink:
             def write(self,s):
@@ -101,7 +108,7 @@ class App(tk.Tk):
                         raise RuntimeError("No se encuentra el servidor Nexora indicado.")
                     app.events.put(("log",f"Conectado a {guild.name} ({guild.id})"))
                     with contextlib.redirect_stdout(Sink()):
-                        await configure(guild,client)
+                        await {"generate":configure,"maintenance":maintain,"audit":audit}[mode](guild,client)
                 except Exception as exc:
                     errors.append(exc)
                 finally:
@@ -112,7 +119,7 @@ class App(tk.Tk):
             if not done: raise RuntimeError("Conexión finalizada antes de configurar.")
         try:
             asyncio.run(run())
-            self.events.put(("done","Configuración aplicada · Revisión manual pendiente"))
+            self.events.put(("done","Operación terminada · Consulta el registro"))
         except Exception as exc:
             self.events.put(("log",f"ERROR: {type(exc).__name__}: {str(exc).replace(token,'[oculto]')}"))
             self.events.put(("done","Error · Puede haber cambios parciales"))
@@ -126,6 +133,8 @@ class App(tk.Tk):
                 self.progress.stop()
                 self.apply.state(["!disabled"])
                 self.preview.state(["!disabled"])
+                self.maintenance.state(["!disabled"])
+                self.audit.state(["!disabled"])
                 self.status.set(msg)
         self.after(100,self.poll)
     def close(self):
