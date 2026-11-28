@@ -241,7 +241,7 @@ class Desktop:
             raise c.WinError(c.get_last_error())
         return screens
 
-    def windows(self):
+    def snapshot_windows(self):
         windows = []
         owners = {}
         processes = {}

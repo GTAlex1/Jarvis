@@ -54,4 +54,7 @@ def load():
     from vosk import Model, SetLogLevel
 
     SetLogLevel(-1)
-    return Model(str(model_path()))
+    try:
+        return Model(str(model_path()))
+    except Exception as error:
+        raise OSError("No se pudo inicializar el modelo inglés local.") from error

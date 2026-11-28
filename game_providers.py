@@ -121,10 +121,12 @@ def classify_shortcuts(rows):
         if suffix != ".lnk" or not (target := existing_exe(item.get("Target"))):
             continue
         launcher = LAUNCHERS.get(PureWindowsPath(target).stem.casefold())
-        args = item.get("Arguments") or ""
+        args = item.get("Arguments")
+        args = args if isinstance(args, str) else ""
         key = name_key(name)
         appid = item.get("Id")
-        web = web_identity(appid) if isinstance(appid, str) else ()
+        appid = appid if isinstance(appid, str) else ""
+        web = web_identity(appid)
         if not web:
             match = re.search(r'(?:^|\s)--app-id[=\s]+"?([a-p]{32})(?=["\s]|$)', args, re.I)
             if match:

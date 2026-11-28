@@ -167,6 +167,20 @@ class LaunchAndTray(unittest.TestCase):
         finally:
             monitor.close()
 
+    def test_window_snapshot_does_not_replace_command_window_ownership(self):
+        desktop = Desktop.__new__(Desktop)
+        desktop.api = Mock()
+        desktop.api.EnumWindows.return_value = True
+        desktop.window_callback = lambda callback: callback
+        desktop.instances = Mock()
+        desktop.instances.all.return_value = ()
+        desktop.window_owners = {7: Running(1, "Editor.exe", window=7)}
+        self.assertEqual(desktop.snapshot_windows(), ([], {}))
+        self.assertEqual(desktop.running(), ())
+        self.assertEqual(tuple(desktop.window_owners), (7,))
+        self.assertEqual(desktop.windows(), [])
+        self.assertEqual(desktop.window_owners, {})
+
     def test_icons_and_tray_version_handover_policy(self):
         from struct import unpack_from
         from tray_theme import ICONS, appearance
@@ -220,7 +234,7 @@ class NativeWindowIdentity(unittest.TestCase):
         root.update()
         desktop = Desktop()
         api = desktop.instances.window_aumid
-        pid = next(handle for handle, caption, _ in desktop.windows() if caption == root.title())
+        hwnd = next(handle for handle, caption, _ in desktop.windows() if caption == root.title())
         value = PropertyValue()
         appid = ("Chromium._crx_" + "c" * 32)
         text = c.create_unicode_buffer(appid)
@@ -229,12 +243,12 @@ class NativeWindowIdentity(unittest.TestCase):
         status = api.init(None, 2)
         store = c.c_void_p()
         try:
-            self.assertGreaterEqual(api.open(pid, c.byref(IID_PROPERTY_STORE), c.byref(store)), 0)
+            self.assertGreaterEqual(api.open(hwnd, c.byref(IID_PROPERTY_STORE), c.byref(store)), 0)
             methods = c.cast(store, c.POINTER(c.POINTER(c.c_void_p))).contents
             set_value = c.WINFUNCTYPE(w.LONG, c.c_void_p, c.POINTER(PropertyKey),
                                      c.POINTER(PropertyValue))(methods[6])
             self.assertGreaterEqual(set_value(store, c.byref(APP_ID), c.byref(value)), 0)
-            self.assertEqual(api(pid), appid)
+            self.assertEqual(api(hwnd), appid)
             self.assertTrue(any(owner.aumid == appid for owner in desktop.running()))
             self.assertGreaterEqual(set_value(store, c.byref(APP_ID), c.byref(PropertyValue())), 0)
         finally:
