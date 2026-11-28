@@ -1,5 +1,12 @@
 # Cambios de JARVIS
 
+## 0.6.5-rc.1 · Candidata de validación interna
+
+- Añade un catálogo persistente de aplicaciones y juegos. Incorpora Inicio, escritorio, registro, paquetes y carpetas portables configurables.
+- Resuelve nombres y alias contra aplicaciones o ventanas. Pide una elección al detectar ambigüedad y revalida el destino antes de ejecutar.
+- Compara el estado de los procesos y las ventanas con la identidad del juego. Informa si solo se solicitó la apertura o si el cliente necesita otra acción.
+- Añade fixtures de catálogos y launchers, comprobaciones de Windows y un caso de actualización desde 0.6.4.2. Queda pendiente la validación física en equipos con los clientes instalados.
+
 ## 0.6.4.2 · Validación interna
 
 - Separación del detector de activación y de la transcripción. Una segunda comprobación léxica valida variantes acústicas del inicio de una frase. El búfer guarda el inicio de la orden para transcripción y verificación.

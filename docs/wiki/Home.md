@@ -40,13 +40,19 @@ Pulsa **Probar micrófono** y di «abre Spotify». La prueba separa señal, voz 
 
 Si necesitas distinguir problemas del controlador y del reconocimiento, abre `%LOCALAPPDATA%\JARVIS\voz.log`. Consulta las [pruebas físicas de la guía](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md#pruebas-con-tu-micrófono) y la [hoja de ruta](https://github.com/GTAlex1/Jarvis/blob/main/ROADMAP.md).
 
+## Catálogo de aplicaciones y videojuegos
+
+La candidata **0.6.5-rc.1** incorpora un catálogo de Windows, tiendas, accesos locales y carpetas portables. Di `actualiza aplicaciones` tras instalar un programa o configura una carpeta desde la bandeja. Si el launcher requiere pulsar **Jugar**, JARVIS deja el arranque del juego sin confirmar. Si hay varias coincidencias, puedes elegir una por nombre o número.
+
+Consulta la [cobertura y restricciones por proveedor](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/docs/catalogo-aplicaciones.md) y la [lista de pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#validación-física-de-065).
+
 ## Órdenes y atajos
 
 | Orden | Resultado |
 | --- | --- |
-| `abre VSCode` | Solicita a Windows abrir Visual Studio Code desde el menú Inicio. |
+| `abre VSCode` | Resuelve Visual Studio Code en el catálogo y comprueba evidencia del arranque. |
 | `minimiza Chrome` | Minimiza las ventanas abiertas de Chrome. |
-| `aplicaciones` | Lista las aplicaciones que ofrece Windows en el menú Inicio. |
+| `aplicaciones` | Lista las entradas del catálogo. Usa `actualiza aplicaciones` para forzar una actualización. |
 | `VSCode izquierda` o `vscode izquieda` | Coloca VS Code en la mitad izquierda. |
 | `Visual Studio Code pantalla completa` | Maximiza VS Code. |
 | `Chrome derecha monitor 2` | Coloca Chrome en la mitad derecha del monitor 2. |

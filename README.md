@@ -26,7 +26,7 @@ La animación se detiene al ocultar o minimizar el panel.
 3. Puedes cerrar el panel con la X. Di «Jarvis, abre Spotify» de corrido o con una pausa breve. JARVIS verifica la voz que pronuncia la orden. Si dices «Jarvis» por separado y la muestra es demasiado corta, la activación queda pendiente hasta verificar la frase siguiente.
 4. Comprueba el estado en el panel o en el icono de la bandeja. Si un turno es demasiado breve para verificarlo, usa una frase más larga, como «Sí, continúa con la explicación».
 
-Puedes decir «Cerrá Spotify», «Ponme la calculadora» o «Reiníciame el ordenador». Las coincidencias exactas con una misma identidad de aplicación se abren directamente si lo permite tu perfil. Las coincidencias aproximadas se confirman. La detección universal de juegos queda en 0.6.5.
+Puedes decir «Cerrá Spotify», «Ponme la calculadora» o «Reiníciame el ordenador». Las coincidencias exactas con una misma identidad de aplicación se abren directamente si lo permite tu perfil. Las coincidencias aproximadas se confirman.
 
 ### Adaptación de voz
 
@@ -70,6 +70,14 @@ Pulsa **Probar micrófono** y di «abre Spotify». La prueba distingue señal, a
 JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0. Para aplicar la actualización, JARVIS sale por completo, espera a que Windows libere el ejecutable y se vuelve a abrir. El actualizador conserva la copia anterior hasta que el nuevo arranque se confirma. Si falla, guarda el paso y el error en `%LOCALAPPDATA%/JARVIS/actualizacion.log`.
 
 Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub Actions compila y prueba la aplicación en Windows antes de publicar el ejecutable.
+
+## Catálogo de aplicaciones y juegos
+
+La candidata **0.6.5-rc.1** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. Para añadir una carpeta de otro disco, usa **Carpetas de aplicaciones…** en la bandeja.
+
+Puedes probar `abre el visual`, `abre el navegador`, `pon el honkai en la segunda pantalla` o `open the calculator` con los nombres y alias que ofrezca tu instalación. JARVIS te pedirá elegir si hay varios destinos o si reconoce un nombre aproximado. Los launchers pueden requerir sesión, actualización o pulsar **Jugar**. JARVIS distingue entre solicitar el arranque y observar el juego abierto.
+
+Consulta la [cobertura por proveedor](docs/catalogo-aplicaciones.md), la [guía de comprobaciones físicas](Guia.md#validación-física-de-065) y el [listado de órdenes](#órdenes-de-windows).
 
 ## Órdenes de Windows
 

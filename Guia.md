@@ -210,3 +210,20 @@ Usa `mayor.menor.parche` o `mayor.menor.parche.revisión`. Las etiquetas prelimi
 3. Habla con otra persona con JARVIS activo durante varios minutos. Pídele que pruebe una orden segura por separado y que intente continuar una conversación iniciada por ti, en persona y por Discord. Prueba audio reproducido y revisa el diagnóstico aunque no se ejecute nada.
 4. Prueba «Cerrá Spotify», «Ponme la calculadora», «Reiníciame el ordenador» y «No cierres Spotify». Si pruebas reinicio, guarda el trabajo y comprueba «cancela» durante la cuenta atrás. Añade, desactiva y borra un alias voluntario.
 5. Conserva una prueba de llamada con Discord y WhatsApp con la escucha activa y pausada. Si tienes otros dispositivos, cambia entre WASAPI, MME, DirectSound y ASIO disponible, y comprueba USB, Bluetooth, analógico y el cambio de predeterminado mientras la aplicación está abierta. Anota formato, ruta y fase del fallo. Steam mantiene su comprobación física como control de 0.6.5.
+
+
+## Catálogo de aplicaciones y juegos
+
+En la candidata 0.6.5, **Aplicaciones** incluye entradas de Windows, clientes y carpetas portables. En la bandeja, **Carpetas de aplicaciones…** añade una carpeta local; si cancelas el selector, JARVIS ofrece borrar la lista adicional tras confirmación. Las carpetas habituales `PortableApps` y `Games` del usuario se consultan por defecto. Después de instalar, mover o eliminar un programa di o escribe `actualiza aplicaciones`. Un resultado que indique «sin ruta de arranque» puede necesitar un acceso directo creado desde el cliente del juego.
+
+Una coincidencia aproximada se confirma diciendo el nombre, el número de la opción o «sí» si solo hay una propuesta. El panel y la consola permiten elegir por número. Para diferenciar ventanas del mismo programa puedes usar su título completo. Para distinguir instalaciones con el mismo nombre, puedes indicar también el proveedor. Algunos ejemplos son `abre Rocket League Epic Games`, `pon el honkai en la segunda pantalla`, `minimiza Discord` y `put VSCode on the left`. La captura y los modelos de voz son los de 0.6.4.2; el inglés escrito no implica reconocimiento acústico en inglés.
+
+Para empezar a probar, consulta el [listado de órdenes](README.md#órdenes-de-windows) y los [detalles de fuentes y limitaciones](docs/catalogo-aplicaciones.md).
+
+### Validación física de 0.6.5
+
+1. Mantén una copia de 0.6.4.2. Abre el artefacto de la candidata y comprueba que conserva tu micrófono, biometría, perfil Libertad, arranque automático y uso simultáneo con Discord.
+2. Prueba Valorant, Genshin Impact, Honkai: Star Rail, Rocket League por Epic y un juego de Steam. Si se abre la ficha del cliente, anota si JARVIS informa de que no pudo confirmar el arranque. Comprueba el juego real y registra si fue necesario pulsar **Jugar**.
+3. Prueba Minecraft para Windows y, si está instalado, Minecraft Java; comprueba que el launcher y el juego se distinguen. Prueba también un título de EA, Ubisoft, Battle.net, GOG y Game Pass por cada cliente del que dispongas.
+4. Añade una carpeta portable de otra unidad, lanza una aplicación y actualiza después de quitarla. Prueba dos ventanas de VS Code, los alias de Chrome/Edge y los movimientos a un segundo monitor. Comprueba el aviso de guardar al cerrar un documento editado.
+5. Desde el panel oculto, prueba nombres y alias por voz, rechazos de hablantes ajenos y confirmaciones de acciones protegidas. Haz la comparación con 0.6.4.2 si reaparece un fallo físico.

@@ -9,7 +9,7 @@ Nexora es el nombre provisional desde 0.7.0. Se revisará su disponibilidad lega
 | 0.6.4 | Reconocimiento avanzado y seguridad de voz. |
 | 0.6.4.1 | Diagnóstico biométrico, corrección de BUG-064-001 y perfiles de seguridad. El propietario validó persistencia y órdenes tras una pausa. |
 | 0.6.4.2 | Voice & Recognition Overhaul. Validación interna de activación continua, reconocimiento, adaptación voluntaria, seguridad y actualizador. |
-| 0.6.5 | Detección universal de aplicaciones y videojuegos para Windows. |
+| 0.6.5 | Universal Application Intelligence. Candidata con catálogo local y comprobación del arranque; queda pendiente validar el comportamiento real de los clientes en Windows. |
 | 0.6.5.1 | Infraestructura de betatesting, diagnósticos voluntarios, feedback, canales de actualización y recuperación. |
 | 0.6.5.2 | Fase A: servidor oficial de Discord. Fase B: bot comunitario e integraciones. |
 | 0.6.5.3 | Nexora Hub con sugerencias, votaciones, feedback, panel de administración y sincronización con Discord. |
