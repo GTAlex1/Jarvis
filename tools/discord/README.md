@@ -24,3 +24,6 @@ Tras terminar, verifica los permisos con la vista como rol y retira el permiso A
 Pendiente: prueba real de API, AutoMod, nivel de verificación, jerarquía visual, permisos de moderación, foros, tickets privados y auditoría completa de permisos. No invites usuarios hasta revisar estos puntos. No se requiere alojamiento permanente.
 
 No se ha publicado una release de JARVIS ni se ha creado el servidor mediante este código todavía.
+
+## Interfaz v2
+Abre Abrir-Nexora.cmd. Personalizar renombra categorías conservando IDs, ordena roles, configura verificación media, añade embeds y AutoMod de menciones. Crea foros adicionales si Comunidad está habilitada. Auditar revisa accesos básicos sin modificar el servidor. No borra canales iniciales ni mensajes. No concede permisos de moderación ni retira Administrador automáticamente. Revisa manualmente los resultados. La v2 aún no se ha probado contra Discord.
