@@ -189,3 +189,17 @@ def save_application_folders(folders):
         raise ValueError("Puedes añadir hasta 24 carpetas al catálogo.")
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "ApplicationFolders", 0, winreg.REG_SZ, json.dumps(folders))
+
+
+def update_channel():
+    value = read_value(SETTINGS_KEY, "UpdateChannel", "stable")
+    return value if value in ("stable", "experimental") else "stable"
+
+
+def save_update_channel(value):
+    import winreg
+
+    if value not in ("stable", "experimental"):
+        raise ValueError("Canal de actualizaciones desconocido.")
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "UpdateChannel", 0, winreg.REG_SZ, value)

@@ -22,12 +22,12 @@ from security_dialog import SecurityDialog
 from dialogue import Clarification, SelectedCommand
 from preferences import (application_folders, save_application_folders, microphone_enabled, save_voice_settings, set_microphone,
                          set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings,
-                         adaptation_settings, save_adaptation_settings)
+                         adaptation_settings, save_adaptation_settings, update_channel, save_update_channel)
 from speaker_dialog import SpeakerDialog
 from voice_authorization import (ApprovalAnswer, ExitAction, LocalApproval, PendingApproval,
                                  PowerAction, PowerScheduled, RejectedAction, UNVERIFIED)
 from windows_protection import ProfileStore
-from updater import VERSION, acknowledge_startup, install_update, latest_update
+from updater import VERSION, acknowledge_startup, install_update, latest_update, version_tuple
 from voice_service import STATE_LABELS, VoiceService
 from windows_tray import (WindowsTray, handover_kind, native_instance, request_handover,
                           show_running_instance, single_instance)
@@ -47,6 +47,8 @@ class Resident:
         self.panel = None
         self.events = SimpleQueue()
         self.available_update = None
+        self.update_channel = update_channel()
+        self.return_to_stable = False
         self.update_busy = False
         self.installing = False
         self.closing = False
@@ -153,6 +155,9 @@ class Resident:
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
+            *((("Canal estable", self.update_channel == "stable", lambda: self.change_channel("stable")),
+               ("Canal experimental", self.update_channel == "experimental", lambda: self.change_channel("experimental")))
+              if hasattr(self, "update_channel") else ()),
             (("Actualizar y reiniciar…" if self.available_update else "Buscar actualizaciones"), False, self.update_clicked),
             ("Reiniciar JARVIS", False, self.restart),
             ("Salir completamente", False, self.quit),
@@ -641,12 +646,31 @@ class Resident:
         if self.panel is not None and self.packaged:
             self.panel.update_controls(self.update_status, self.available_update, self.update_busy)
 
+    def change_channel(self, channel):
+        if self.update_busy:
+            return
+        if channel == "experimental" and self.update_channel != channel and not messagebox.askyesno(
+            "JARVIS", "Este canal ofrece versiones para pruebas. ¿Activarlo?", default="no", parent=self.root
+        ):
+            return
+        if channel != self.update_channel:
+            save_update_channel(channel)
+            self.update_channel = channel
+        self.available_update = None
+        self.return_to_stable = channel == "stable"
+        self.start_update()
+
     def update_clicked(self):
         if self.available_update is None:
             self.start_update()
-        elif messagebox.askyesno("JARVIS", f"¿Instalar {self.available_update[0]} y reiniciar JARVIS?",
+        elif messagebox.askyesno("JARVIS", self.update_question(),
                                  parent=self.root):
             self.start_update(self.available_update)
+
+    def update_question(self):
+        tag = self.available_update[0]
+        action = "Volver a la versión estable" if version_tuple(tag) < version_tuple(VERSION) else "Instalar"
+        return f"¿{action} {tag} y reiniciar JARVIS?"
 
     def start_update(self, update=None):
         if self.update_busy or self.closing:
@@ -658,7 +682,9 @@ class Resident:
 
         def work():
             try:
-                result = install_update(update) if update else latest_update()
+                result = (install_update(update, check_policy=True) if update else latest_update(
+                    self.update_channel, remote_policy=True, allow_stable_return=self.return_to_stable,
+                ))
             except (OSError, ValueError, KeyError, TypeError) as error:
                 self.defer(self.finish_update, None, str(error))
             else:

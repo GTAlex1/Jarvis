@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "versions": {
+    "0.6.4.2": {"channel": "experimental", "status": "experimental disponible"},
+    "0.6.5-rc.1": {"channel": "experimental", "status": "defectuosa", "issues": ["game_roots no inicializado detiene el catálogo"], "replacement": "0.6.5-rc.2"},
+    "0.6.5-rc.2": {"channel": "experimental", "status": "obsoleta"},
+    "0.6.5-rc.3": {"channel": "experimental", "status": "pendiente de validación"}
+  }
+}
