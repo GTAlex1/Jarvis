@@ -32,6 +32,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements-voice.txt pyinstaller==6.16.0
       - run: python prepare_voice_model.py
+      - run: python -c 'from english_voice import install; install()'
       - run: python -m compileall -q .
       - name: Prueba comandos, bandeja, voz y rutas de captura sin micrófono físico
         run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul test_app_catalog test_rc2
@@ -44,8 +45,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'No se encontró el modelo acústico.' }
           $portaudio = python -c "import _sounddevice_data; from pathlib import Path; print(Path(next(iter(_sounddevice_data.__path__))) / 'portaudio-binaries')"
           if ($LASTEXITCODE -ne 0) { throw 'No se encontró PortAudio.' }
+          python tools/windows_version.py version-info.txt
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo generar la información de versión.' }
           $options = @(
-            '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS', '--icon', 'assets/tray/waiting.ico',
+            '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS', '--icon', 'assets/tray/waiting.ico', '--version-file', 'version-info.txt',
             '--collect-binaries', 'vosk',
             '--copy-metadata', 'pocketsphinx', '--copy-metadata', 'sounddevice', '--copy-metadata', 'numpy',
             '--add-binary', "${portaudio}/libportaudio64bit.dll:_sounddevice_data/portaudio-binaries",
@@ -55,6 +58,8 @@ jobs:
           )
           python -m PyInstaller @options jarvis_gui.py
           if ($LASTEXITCODE -ne 0) { throw 'Falló el empaquetado.' }
+          $version = python -c 'from updater import VERSION; print(VERSION)'
+          if ((Get-Item dist/JARVIS.exe).VersionInfo.ProductVersion -ne $version) { throw 'Versión incorrecta en el ejecutable.' }
           $limit = python -c "from updater import MAX_SIZE; print(MAX_SIZE)"
           if ((Get-Item dist/JARVIS.exe).Length -gt [long]$limit) { throw 'El ejecutable supera el límite del actualizador.' }
       - name: Prueba los motores dentro del ejecutable

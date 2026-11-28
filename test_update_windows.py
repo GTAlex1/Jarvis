@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from jarvis import Desktop
 from updater import INSTALL, VERSION
+from windows_tray import native_instance
 
 
 @unittest.skipUnless(sys.platform == "win32", "Necesita el ejecutable de Windows")
@@ -118,6 +119,10 @@ class PackagedUpdateTest(unittest.TestCase):
         try:
             self.wait_until(lambda: receipt.exists() and receipt.read_text(encoding="utf-8") == version)
             self.wait_until(lambda: any(exe == target.stem for _, _, exe in desktop.windows()))
+            if version == "0.6.4.2":
+                self.wait_until(lambda: native_instance() is not None)
+                active = native_instance()
+                self.assertEqual((active.version, active.cooperates), ("0.6.4.2", False))
             helper = self.helper(folder, target, staged, old.pid, legacy["INSTALL"])
             if closes_with_window:
                 hwnd = next(hwnd for hwnd, _, exe in desktop.windows() if exe == target.stem)

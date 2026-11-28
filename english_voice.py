@@ -18,7 +18,12 @@ def model_path():
 
 
 def installed():
-    return (model_path() / ".jarvis-verified").is_file() and (model_path() / "am/final.mdl").is_file()
+    path = model_path()
+    try:
+        return ((path / ".jarvis-verified").read_text(encoding="ascii") == DIGEST
+                and (path / "am/final.mdl").is_file())
+    except (OSError, UnicodeError):
+        return False
 
 
 def install():

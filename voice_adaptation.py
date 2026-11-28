@@ -7,7 +7,7 @@ from commands import parse, target_name
 
 MAX_ALIASES = 50
 VALID_NAME = re.compile(r"[\w .:+&()'’-]{2,80}", re.UNICODE)
-TARGET_VERBS = {"abre", "cierra", "minimiza", "enfoca", "restaura", "maximiza", "centra", "mueve"}
+TARGET_VERBS = {"open", "launch", "close", "minimize", "focus", "restore", "maximize", "move", "put", "abre", "cierra", "minimiza", "enfoca", "restaura", "maximiza", "centra", "mueve"}
 
 
 def name_key(text):
@@ -34,6 +34,11 @@ class Adaptation:
             if key in keys or key == name_key(canonical):
                 raise ValueError("La pronunciación alternativa está repetida o coincide con el nombre.")
             keys.add(key)
+
+    def corrected(self, variant, canonical):
+        """Record an explicit correction while retaining other local aliases."""
+        others = tuple(pair for pair in self.aliases if name_key(pair[0]) != name_key(variant))
+        return Adaptation(True, (*others, (variant, canonical)))
 
     def apply(self, normalized):
         if not self.enabled or not self.aliases:

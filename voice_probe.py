@@ -157,6 +157,20 @@ def high_rate_command(model, command):
 def report(fixture_path, output_path):
     try:
         results = test_audio(Path(fixture_path))
+        from english_voice import installed, load
+        from tray_theme import ICONS
+
+        for icon in ("waiting", "listening", "processing", "executing", "error", "muted"):
+            if not (ICONS / f"{icon}.ico").is_file():
+                raise AssertionError("Falta un icono de estado dentro del ejecutable.")
+        results["bandeja_recursos"] = "correcto"
+        if installed():
+            decoder = SpanishRecognizer(load())
+            clip = fixture(Path(fixture_path), "rc2-open-firefox-en")
+            words = decoder.feed(clip) or decoder.finish()
+            if not words or parse(words.text) != ("open", "firefox"):
+                raise AssertionError("La muestra sintética en inglés no se reconoció.")
+            results["orden_sintética_en_inglés"] = "correcto"
         pcm = PcmConverter(AudioFormat(48000, 2)).convert(b"\x00\x04" * 4800)
         if len(pcm) != 1600 or not any(pcm):
             raise AssertionError("La conversión local a mono y 16 kHz no devolvió señal.")
