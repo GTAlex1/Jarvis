@@ -198,9 +198,10 @@ def portable_apps(folders):
                 return
 
 
-def local_exists(path):
+def local_exists(path, directory=False):
     try:
-        return Path(path).is_file()
+        item = Path(path)
+        return item.is_dir() if directory else item.is_file()
     except OSError:
         return False
 
@@ -211,6 +212,11 @@ def valid_route(app):
     route = app.route
     if app.backing and not local_exists(app.backing):
         return False
+    roots = tuple(identity.value for identity in app.evidence if identity.kind == "game_root")
+    if roots and not any(local_exists(root, directory=True) for root in roots):
+        return False
+    if route.kind == "unavailable":
+        return bool(roots)
     if route.kind == "file":
         return bool(existing_exe(route.value))
     if route.kind == "shortcut":
@@ -218,7 +224,9 @@ def valid_route(app):
                 and PureWindowsPath(route.value).suffix.casefold() == ".lnk"
                 and local_exists(route.value))
     if route.kind == "appsfolder":
-        return bool(SHELL_ID.fullmatch(route.value) and not route.value.casefold().startswith(("shell:", "::")))
+        if not SHELL_ID.fullmatch(route.value) or route.value.casefold().startswith(("shell:", "::")):
+            return False
+        return bool(existing_exe(route.value)) if exe_path(route.value) else True
     if route.kind == "uri":
         return provider_uri(route.value) == app.source
     return False

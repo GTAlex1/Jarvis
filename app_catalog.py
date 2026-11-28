@@ -74,17 +74,16 @@ def consolidate(applications):
                "registry": 3, "portable": 4}
     for app in sorted(applications, key=lambda app: sources.get(app.source, 2)):
         index = routes.get(app.key)
-        if index is None and not app.game:
+        if index is None and not app.game and app.route.kind != "appsfolder":
             keys = {i.value.casefold() for i in app.evidence if i.kind == "exe"}
             for key in keys:
-                for candidate in sorted(executable_indices.get(key, ())):
-                    if app.source != "shortcut" or (
-                            result[candidate].source == "start" and name_key(app.name)
-                            in set(map(name_key, labels(result[candidate])))
-                    ):
-                        index = candidate
-                        break
-                if index is not None:
+                compatible = executable_indices.get(key, ())
+                if app.source == "shortcut":
+                    compatible = [candidate for candidate in compatible
+                                  if result[candidate].source == "start"
+                                  and name_key(app.name) == name_key(result[candidate].name)]
+                if len(compatible) == 1:
+                    index = next(iter(compatible))
                     break
         if index is None:
             index = len(result)

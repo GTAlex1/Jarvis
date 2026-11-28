@@ -128,7 +128,8 @@ class Resident:
             ("Perfiles de voz…", False, self.open_speakers),
             ("Adaptación de voz…", False, self.open_adaptation),
             ("Seguridad y permisos…", False, self.open_security),
-            ("Carpetas de aplicaciones…", False, self.configure_application_folders),
+            ("Añadir carpeta de aplicaciones…", False, self.configure_application_folders),
+            ("Quitar carpetas adicionales…", False, self.clear_application_folders),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
@@ -297,14 +298,18 @@ class Resident:
         current = application_folders()
         selected = filedialog.askdirectory(parent=self.root, title="Añadir una carpeta de aplicaciones o juegos")
         if selected:
-            updated = tuple(dict.fromkeys((*current, str(Path(selected)))))
+            path = Path(selected)
+            if path.anchor == str(path):
+                raise ValueError("Elige una carpeta concreta dentro de la unidad.")
+            updated = tuple(dict.fromkeys((*current, str(path))))
             save_application_folders(updated)
-        elif current and messagebox.askyesno("JARVIS", "¿Quitar todas las carpetas adicionales del catálogo?",
-                                             default="no", parent=self.root):
+            self.assistant.desktop.index.refresh(force=True)
+
+    def clear_application_folders(self):
+        if application_folders() and messagebox.askyesno("JARVIS", "¿Quitar todas las carpetas adicionales del catálogo?",
+                                                        default="no", parent=self.root):
             save_application_folders(())
-        else:
-            return
-        self.assistant.desktop.index.refresh(force=True)
+            self.assistant.desktop.index.refresh(force=True)
 
     def finish_command(self, completed, command):
         result = self.command_result(completed)

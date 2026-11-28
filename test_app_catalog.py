@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from app_catalog import Application, Catalog, Identity, consolidate, labels, resolve
 from app_launch import Running, launch_verified, matches_identity
 from commands import parse
+from command_language import normalize_order
 from dialogue import Clarification
 from game_providers import classify_shortcuts, epic_games, game_app, provider_uri, steam_games, vdf
 from jarvis import Desktop, execute
@@ -44,6 +45,12 @@ class CatalogTest(unittest.TestCase):
         apps = consolidate((left, right, start))
         self.assertEqual(len(apps), 2)
         self.assertEqual(set(resolve("writer", apps, labels)[0]), set(apps))
+
+    def test_shared_binary_does_not_merge_distinct_packaged_ids(self):
+        path = r"E:\Browser\Browser.exe"
+        first = Application("Main", "start", Identity("appsfolder", "Shared!Main"), (Identity("exe", path),))
+        second = Application("Alt", "start", Identity("appsfolder", "Shared!Alt"), (Identity("exe", path),))
+        self.assertEqual(len(consolidate((first, second))), 2)
 
     def test_async_refresh_cache_and_uninstall(self):
         with TemporaryDirectory() as folder:
@@ -200,6 +207,8 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(parse("pon el honkai en la segunda pantalla"), ("place", "honkai", "monitor", 2))
         self.assertEqual(parse("Pon el Minecraft a pantalla completa"), ("place", "minecraft", "full", None))
         self.assertEqual(parse("actualiza aplicaciones"), ("refresh_apps",))
+        self.assertEqual(normalize_order("do not open Spotify"), "")
+        self.assertEqual(normalize_order("Could you open the calculator, please?"), "abre calculadora")
         self.assertLess(version_tuple("0.6.4.2"), version_tuple("0.6.5-rc.1"))
         self.assertLess(version_tuple("0.6.5-rc.1"), version_tuple("0.6.5"))
 

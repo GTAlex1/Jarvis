@@ -115,14 +115,14 @@ jobs:
             diagnostico-voz.json
           if-no-files-found: error
       - name: Obtiene la wiki
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev/0.6.5-universal-apps'
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}.wiki
           ref: master
           path: wiki-publish
       - name: Publica la documentación en la wiki
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev/0.6.5-universal-apps'
         shell: pwsh
         run: |
           Copy-Item docs/wiki/Home.md wiki-publish/Home.md

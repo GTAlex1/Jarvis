@@ -24,7 +24,7 @@ def normalize(value):
 
 
 APP_NAMES = {
-    "code": ("Visual Studio Code", "VSCode", "VS Code"),
+    "code": ("Visual Studio Code", "VSCode", "VS Code", "Visual"),
     "chrome": ("Google Chrome", "Chrome"),
     "msedge": ("Microsoft Edge", "Edge"),
     "firefox": ("Firefox", "Mozilla Firefox"),
@@ -224,7 +224,7 @@ class Desktop:
 
     def applications(self):
         cached = self.index.snapshot(wait=True)
-        available = tuple(app for app in cached if app.route.kind == "unavailable" or valid_route(app))
+        available = tuple(app for app in cached if valid_route(app))
         if len(available) < len(cached):
             self.index.refresh(force=True)
         return available
@@ -256,7 +256,7 @@ class Desktop:
     def system_application(self, title):
         path = str(PureWindowsPath(os.environ["SystemRoot"]) / SYSTEM_EXECUTABLES[title])
         evidence = [Identity("exe", path)]
-        if title == "calculadora":
+        if title in {"calculadora", "calculator"}:
             evidence.append(Identity("aumid", "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"))
         if title == "bloc de notas":
             evidence.append(Identity("aumid", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"))

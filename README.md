@@ -73,7 +73,7 @@ Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub A
 
 ## Catálogo de aplicaciones y juegos
 
-La candidata **0.6.5-rc.1** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. Para añadir una carpeta de otro disco, usa **Carpetas de aplicaciones…** en la bandeja.
+La candidata **0.6.5-rc.1** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. Para añadir una carpeta de otro disco, usa **Añadir carpeta de aplicaciones…** en la bandeja.
 
 Puedes probar `abre el visual`, `abre el navegador`, `pon el honkai en la segunda pantalla` o `open the calculator` con los nombres y alias que ofrezca tu instalación. JARVIS te pedirá elegir si hay varios destinos o si reconoce un nombre aproximado. Los launchers pueden requerir sesión, actualización o pulsar **Jugar**. JARVIS distingue entre solicitar el arranque y observar el juego abierto.
 
@@ -83,7 +83,8 @@ Consulta la [cobertura por proveedor](docs/catalogo-aplicaciones.md), la [guía 
 
 | Función | Ejemplos |
 | --- | --- |
-| Abrir una aplicación | `abre VSCode`, `abre Chrome` |
+| Abrir una aplicación o juego | `abre VSCode`, `abre Chrome` |
+| Ver y actualizar el catálogo | `aplicaciones`, `actualiza aplicaciones`; `ventanas` muestra lo que está abierto |
 | Cerrar una ventana | `cierra Chrome`, `cierra el Bloc de notas` |
 | Minimizar y restaurar | `minimiza Chrome`, `restaura Firefox` |
 | Primer plano | `enfoca Spotify`, `activa VSCode` |
