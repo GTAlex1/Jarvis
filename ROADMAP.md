@@ -1,44 +1,102 @@
 # Hoja de ruta de JARVIS y Nexora
 
-**0.6.4** incorpora reconocimiento avanzado de órdenes, verificación local del hablante, confirmación de acciones sensibles y ajustes de captura compartida. Las versiones siguientes son objetivos revisables según las pruebas, el alcance y los recursos disponibles.
+Nexora es el nombre provisional desde 0.7.0. Se revisará su disponibilidad legal y comercial antes del cambio de marca. Las versiones siguientes son objetivos revisables. La seguridad se valida desde las primeras revisiones.
 
-| Versión | Objetivo |
+## 0.6.x · Fundamentos
+
+| Versión | Alcance |
 | --- | --- |
 | 0.6.4 | Reconocimiento avanzado y seguridad de voz. |
-| 0.6.4.1 | Corrección de BUG-064-001, diagnóstico biométrico y perfiles de seguridad. Validación física pendiente. |
-| 0.6.5 | Detección universal de aplicaciones. |
-| 0.6.5.1 | Infraestructura de betatesters, diagnósticos, feedback y canales de actualización. |
-| 0.6.5.2 | Nexora Hub, sugerencias, votaciones y panel de administración. |
-| 0.6.6 | Gaming Intelligence. |
-| 0.7.0 | Cambio de marca a Nexora, Liquid Glass y beta cerrada oficial. |
-| 0.7.1 | HUD flotante. |
-| 0.7.2 | Accesibilidad y dictado. |
-| 0.8.0 | Integraciones con aplicaciones. |
-| 0.8.1 | Rutinas y automatizaciones. |
-| 0.8.2 | Sistema de deshacer acciones. |
-| 0.8.5 | Voces neuronales locales. |
-| 0.9.0 | Inteligencia artificial local adaptativa. |
-| 0.9.1 | Aprendizaje y memoria. |
-| 0.9.2 | Nexora Vision. |
-| 0.9.3 | Automatización visual y web. |
-| 0.9.4 | Nexora Remote. |
-| 0.9.5 | Catálogo de extensiones. |
-| 0.9.6 | Seguridad y permisos avanzados. |
-| 0.9.7 | Optimización y compatibilidad. |
-| 1.0.0 | Primera versión estable para Windows. |
-| 1.1.0 | Nexora Connect. |
-| 1.2.0 | Linux. |
-| 1.3.0 | macOS. |
-| 1.4.0 | Android. |
-| 1.5.0 | iOS. |
-| 2.0.0 | Ecosistema multiplataforma unificado. |
+| 0.6.4.1 | Diagnóstico biométrico, corrección de BUG-064-001 y perfiles de seguridad. El propietario validó persistencia y órdenes tras una pausa. |
+| 0.6.4.2 | Voice & Recognition Overhaul. Validación interna de activación continua, reconocimiento, adaptación voluntaria, seguridad y actualizador. |
+| 0.6.5 | Detección universal de aplicaciones y videojuegos para Windows. |
+| 0.6.5.1 | Infraestructura de betatesting, diagnósticos voluntarios, feedback, canales de actualización y recuperación. |
+| 0.6.5.2 | Servidor oficial de Discord y bot comunitario básico. |
+| 0.6.5.3 | Nexora Hub con sugerencias, votaciones, feedback, panel de administración y sincronización con Discord. |
+| 0.6.6 | Gaming Intelligence. Perfiles de juego, recursos, audio, notificaciones, comandos en juego y apertura de aplicaciones sin robar el foco cuando el sistema lo permita. |
 
-**Identidad provisional.** El cambio de marca a Nexora está previsto para 0.7.0 y depende de comprobar su disponibilidad legal y comercial. La aplicación y el repositorio se llaman JARVIS hasta esa decisión. La palabra de activación configurable es un objetivo futuro.
+### Detección y ejecución de videojuegos
 
-## Nexora Insider
+| Resultado físico de 0.6.4.1 | Qué se comprobará en 0.6.5 |
+| --- | --- |
+| Valorant abre Riot Client. | Arranca Valorant y se verifica el proceso o ventana correspondiente. |
+| Honkai: Star Rail abre HoYoPlay. | Arranca el juego solicitado y se distingue su resultado del launcher. |
+| Rocket League presenta problemas de detección y apertura mediante Epic. | Detecta la instalación compatible, usa el mecanismo de Epic y comprueba el arranque. |
+| Steam funcionó en el equipo del propietario. | Conserva el caso como regresión física. |
 
-La incorporación de los primeros betatesters externos está prevista a partir de 0.6.5.1, si se han validado el bloqueo de voces ajenas, la autorización local de acciones sensibles, la convivencia con llamadas reales, la estabilidad y la recuperación del actualizador. La beta cerrada oficial se plantea para 0.7.0.
+La cobertura prevista incluye Steam, Epic Games, Riot Client, HoYoPlay, Battle.net, Ubisoft Connect, EA App, Xbox, Microsoft Store, GOG Galaxy y aplicaciones o juegos independientes y portables. El ejecutor distinguirá la aplicación solicitada del launcher, respetará las vías admitidas y verificará el resultado observable. [Incidencia de seguimiento](https://github.com/GTAlex1/Jarvis/issues/1)
 
-El programa plantea un canal de versiones de prueba, diagnósticos voluntarios sin audio ni firmas de voz, e informes que recojan la versión, el entorno, los pasos y el resultado. La 0.6.5.2 plantea Nexora Hub como canal para sugerencias y votaciones, con un panel de administración.
+### Nexora Insider y Discord
 
-Los requisitos permanentes y las condiciones de publicación están en [AGENTS.md](AGENTS.md).
+Los primeros betatesters externos podrán incorporarse a partir de 0.6.5.1 una vez comprobados el bloqueo de órdenes ajenas, la estabilidad, la coexistencia de audio y la recuperación del actualizador. Los diagnósticos serán voluntarios y excluirán audio y firmas. La beta cerrada oficial sigue prevista para 0.7.0.
+
+En 0.6.5.2 se solicitará crear y configurar el servidor en Discord Web mediante el navegador de Work cuando exista acceso autorizado y sea viable. El servidor incluirá información, anuncios, descargas, changelog, roadmap, comunidad, gaming, sugerencias y votaciones, errores, soporte, canales privados de betatesting y canales de voz. Tendrá integración con GitHub y un bot comunitario.
+
+Roles previstos: Founder, Developer, Moderator, Zero Division, Nexora Insider, Early Adopter, Member y Nexora. Zero Division será un reconocimiento exclusivo para los betatesters originales.
+
+## 0.7.x · Identidad y experiencia de usuario
+
+| Versión | Alcance |
+| --- | --- |
+| 0.7.0 | Cambio de marca a Nexora, rediseño inspirado en Apple Liquid Glass y beta cerrada oficial. |
+| 0.7.1 | HUD flotante, animaciones e indicadores de actividad. |
+| 0.7.2 | Accesibilidad, dictado y control avanzado por voz. Se evaluará la palabra de activación personalizable. |
+| 0.7.3 | Instalador oficial Nexora-Setup.exe y distribución Nexora-Portable.exe. |
+
+El instalador contempla dependencias y modelos automáticos, migración desde JARVIS, accesos directos, inicio opcional, actualizaciones, reparación, desinstalación y elección sobre conservar o borrar datos. Se prioriza instalar sin administración cuando sea viable y se evaluará la firma digital.
+
+## 0.8.x · Automatización e integraciones
+
+| Versión | Alcance |
+| --- | --- |
+| 0.8.0 | Integraciones modulares con Discord, Spotify, OBS, Steam, VS Code y otras aplicaciones. |
+| 0.8.1 | Rutinas, automatizaciones y tareas programadas. |
+| 0.8.2 | Historial y deshacer acciones reversibles. |
+| 0.8.5 | Voces neuronales locales naturales, perfiles masculinos y femeninos descargables y personalizables con licencias adecuadas. |
+
+## 0.9.x · Inteligencia artificial local
+
+| Versión | Alcance |
+| --- | --- |
+| 0.9.0 | Nexora Intelligence, motor local adaptativo. |
+| 0.9.1 | Memoria editable y aprendizaje personalizado. |
+| 0.9.2 | Nexora Vision y comprensión visual de la pantalla. |
+| 0.9.3 | Nexora Control, interacción con aplicaciones y automatización visual y web. |
+| 0.9.3.1 | Resolución autónoma de tareas y puzles. |
+| 0.9.3.2 | Planificación, verificación y autocorrección. |
+| 0.9.3.3 | Nexora Learn, aprendizaje mediante demostraciones. |
+| 0.9.3.4 | Rutinas adaptativas. |
+| 0.9.4 | Fundamentos de Nexora Connect y control remoto. |
+| 0.9.4.1 | Vinculación segura de dispositivos. |
+| 0.9.4.2 | Encendido remoto compatible. |
+| 0.9.4.3 | Visualización remota autorizada. |
+| 0.9.5 | Catálogo de extensiones e integraciones mediante Nexora Hub. |
+| 0.9.6 | Seguridad avanzada y permisos granulares. |
+| 0.9.7 | Optimización, rendimiento y compatibilidad. |
+
+### Nexora Learn
+
+El usuario podrá mostrar una tarea, revisar los pasos aprendidos y solicitar su repetición o programación. Una rutina conceptual «Misiones diarias» en Honkai: Star Rail deberá contemplar observación, planificación, adaptación, verificación, permisos, cancelación y errores. Su ejecución dependerá de lo que permitan las condiciones de uso y los sistemas del juego. Queda excluida la evasión de antitrampas.
+
+## Nexora 1.0 · Asistente personal
+
+Primera versión estable para Windows tras auditar seguridad, rendimiento y estabilidad. Objetivo de comprender instrucciones, controlar el dispositivo, interpretar su pantalla, aprender rutinas y automatizar tareas autorizadas.
+
+## Nexora 2.0 · Ecosistema conectado
+
+| Versión | Alcance |
+| --- | --- |
+| 1.1.0 | Nexora Connect. Sincronización, vinculación de cuentas y dispositivos, y control remoto seguro. |
+| 1.2.0 | Adaptador para Linux. |
+| 1.3.0 | Adaptador para macOS. |
+| 1.4.0 | Android y Nexora Mobile Companion. |
+| 1.5.0 | iOS y Nexora Mobile Companion. |
+| 2.0.0 | Ecosistema con rutinas, errores y avisos remotos, e integración remota autorizada mediante Discord. |
+
+Una solicitud desde el móvil para ejecutar «Misiones diarias» en el ordenador se vinculará a identidades verificadas, dispositivos enlazados, comunicaciones seguras, permisos independientes, caducidad, historial y cancelación. Las capacidades se comprobarán por plataforma.
+
+## Nexora 3.0 · Inteligencia social
+
+Nexora Social se reserva para 3.0, con posibles prototipos 2.x. El objetivo es participar en canales de voz de Discord con varios interlocutores, respetar turnos, identificar la cuenta emisora y distinguir conversación, preguntas, órdenes, bromas, sarcasmo, ironía y humor contextual. Se contempla intervención espontánea apropiada, lenguaje informal y modos Mayordomo, Colega, Sarcástico, Caótico, Profesional y Personalizado.
+
+La memoria individual y grupal, incluidas bromas internas, requerirá consentimiento. Se informará a los participantes de cómo se procesa el audio, con grabaciones y transcripciones persistentes desactivadas por defecto. Los participantes sin Nexora instalado serán interlocutores del bot. Connect solo podrá controlar dispositivos vinculados y autorizados. La personalidad estará separada del motor de permisos y el humor no otorgará autorización. Se evaluarán viabilidad, privacidad, latencia, costes e integración con Discord.

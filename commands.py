@@ -2,7 +2,7 @@
 import re
 import unicodedata
 
-WAKE_WORD = "Jarvis"
+from wake_word import WAKE_WORD
 WAKE_PREFIX = re.compile(r"^(?:oye )?" + re.escape(WAKE_WORD.casefold()) + r"[, ]+")
 
 

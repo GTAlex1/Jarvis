@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.request import Request, urlopen
 
-VERSION = "0.6.4.1"
+VERSION = "0.6.4.2"
 REPO = "GTAlex1/Jarvis"
 ASSET = "JARVIS.exe"
 MAX_SIZE = 100 * 1024 * 1024
@@ -54,24 +54,45 @@ try {
     $env:JARVIS_UPDATE_RECEIPT = $receipt
     $newApp = Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target) -PassThru -ErrorAction Stop
     $step = 'Comprobar que aparece la interfaz'
-    $deadline = (Get-Date).AddSeconds(40)
+    $seconds = 40
+    if ($env:JARVIS_UPDATE_TEST -eq '1' -and $env:JARVIS_TEST_RECEIPT_TIMEOUT) {
+        $seconds = [int]$env:JARVIS_TEST_RECEIPT_TIMEOUT
+    }
+    $deadline = (Get-Date).AddSeconds($seconds)
     while (-not (Test-Path -LiteralPath $receipt)) {
         if ($newApp.HasExited) { throw "El ejecutable se cerró con código $($newApp.ExitCode)." }
         if ((Get-Date) -gt $deadline) { throw 'La nueva versión sigue ejecutándose, pero no confirmó que la interfaz estuviera lista.' }
         Start-Sleep -Milliseconds 200
     }
     $version = [IO.File]::ReadAllText($receipt)
+    if ($env:JARVIS_UPDATE_EXPECTED -and $version -ne $env:JARVIS_UPDATE_EXPECTED) {
+        throw 'El ejecutable abierto no confirmó la versión descargada.'
+    }
     [IO.File]::WriteAllText($log, "Actualización correcta a $version$nl$target")
     Remove-Item -LiteralPath $backup, $receipt -ErrorAction SilentlyContinue
 } catch {
     $detail = $_.Exception.ToString()
     $restored = $false
-    if ($replaced -and (($null -eq $newApp) -or $newApp.HasExited)) {
+    if ($replaced) {
         try {
-            [IO.File]::Replace($backup, $target, ($staged + '.failed'))
+            if ($null -ne $newApp -and -not $newApp.HasExited) {
+                # Stop only the updater-owned process and its PyInstaller child.
+                $taskkill = Join-Path $env:SystemRoot 'System32/taskkill.exe'
+                & $taskkill /PID $newApp.Id /T /F | Out-Null
+                if (-not $newApp.WaitForExit(10000)) { throw 'El ejecutable nuevo no se cerró.' }
+            }
+            $rollbackBy = (Get-Date).AddSeconds(12)
+            while (-not $restored) {
+                try {
+                    [IO.File]::Replace($backup, $target, ($staged + '.failed'))
+                    $restored = $true
+                } catch {
+                    if ((Get-Date) -ge $rollbackBy) { throw }
+                    Start-Sleep -Milliseconds 250
+                }
+            }
             Remove-Item -LiteralPath ($staged + '.failed') -ErrorAction SilentlyContinue
-            $restored = $true
-        } catch { $detail += $nl + 'Restauración: ' + $_.Exception.ToString() }
+        } catch { $detail += $nl + 'Restauración: ' + $_.Exception.ToString() + $nl + "Copia: $backup" }
     }
     Remove-Item -LiteralPath $staged, $receipt -ErrorAction SilentlyContinue
     $message = "Falló el paso: $step$nl$detail$($nl)Ejecutable: $target"
@@ -111,16 +132,26 @@ def acknowledge_startup():
             temp.unlink(missing_ok=True)
 
 
+VERSION_TAG = re.compile(
+    r"v?([0-9]{1,6})\.([0-9]{1,6})\.([0-9]{1,6})(?:\.([0-9]{1,6}))?"
+    r"(?:-(alpha|beta|rc)\.([1-9][0-9]{0,5}))?", re.IGNORECASE,
+)
+STAGES = {"alpha": 0, "beta": 1, "rc": 2, "": 3}
+CHANNELS = {"stable": {3}, "beta": {1, 2, 3}, "development": {0, 1, 2, 3}}
+
+
 def version_tuple(tag):
-    if not isinstance(tag, str) or not re.fullmatch(r"v?\d{1,6}\.\d{1,6}\.\d{1,6}(?:\.\d{1,6})?", tag):
+    match = VERSION_TAG.fullmatch(tag) if isinstance(tag, str) else None
+    if not match:
         raise ValueError("La versión publicada tiene un formato desconocido.")
-    parts = tuple(map(int, tag.removeprefix("v").split(".")))
-    return parts if len(parts) == 4 else (*parts, 0)
+    major, minor, patch, revision, name, serial = match.groups()
+    return (int(major), int(minor), int(patch), int(revision or 0),
+            STAGES[(name or "").lower()], int(serial or 0))
 
 
-def latest_update():
-    # The 0.6.4 clients only parse three components at /releases/latest.
-    # This client also sees stable hotfix releases published without that flag.
+def latest_update(channel="stable"):
+    if channel not in CHANNELS:
+        raise ValueError("Canal de actualizaciones desconocido.")
     request = Request(
         f"https://api.github.com/repos/{REPO}/releases?per_page=30",
         headers={"Accept": "application/vnd.github+json", "User-Agent": "JARVIS-Updater"},
@@ -128,31 +159,34 @@ def latest_update():
     with urlopen(request, timeout=10) as response:
         releases = json.loads(response.read(2 * 1024 * 1024))
     versions = []
+    installed = version_tuple(VERSION)
     for release in releases:
-        if release.get("draft") or release.get("prerelease"):
+        if release.get("draft"):
             continue
+        tag = release.get("tag_name")
         try:
-            version = version_tuple(release.get("tag_name"))
+            version = version_tuple(tag)
         except ValueError:
             continue
-        if version > version_tuple(VERSION):
-            versions.append((version, release))
+        stage = version[4]
+        if stage not in CHANNELS[channel] or (stage == 3 and release.get("prerelease")) or version <= installed:
+            continue
+        asset = next((item for item in release.get("assets", ()) if item["name"] == ASSET), None)
+        if asset:
+            versions.append((version, tag, asset))
     if not versions:
         return None
-    _, release = max(versions, key=lambda item: item[0])
-    for asset in release["assets"]:
-        if asset["name"] != ASSET:
-            continue
-        digest = asset.get("digest") or ""
-        size = asset["size"]
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or not 0 < size <= MAX_SIZE:
-            raise ValueError("GitHub no proporciona una huella SHA-256 válida para esta descarga.")
-        return release["tag_name"], digest[7:], size
-    raise ValueError("La nueva versión todavía no contiene JARVIS.exe.")
+    _, tag, asset = max(versions, key=lambda item: item[0])
+    digest = asset.get("digest") or ""
+    size = asset["size"]
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or not 0 < size <= MAX_SIZE:
+        raise ValueError("GitHub no proporciona una huella SHA-256 válida para esta descarga.")
+    return tag, digest[7:], size
 
 
 def install_update(update):
     tag, expected_digest, size = update
+    version_tuple(tag)
     target = Path(sys.executable).resolve()
     source = f"https://github.com/{REPO}/releases/download/{tag}/{ASSET}"
     digest = hashlib.sha256()
@@ -171,7 +205,7 @@ def install_update(update):
             if length != size or digest.hexdigest() != expected_digest:
                 raise ValueError("La descarga no coincide con la huella SHA-256 publicada.")
         env = dict(os.environ, JARVIS_UPDATE_TARGET=str(target), JARVIS_UPDATE_STAGED=str(staged),
-                   JARVIS_UPDATE_PID=str(os.getpid()))
+                   JARVIS_UPDATE_PID=str(os.getpid()), JARVIS_UPDATE_EXPECTED=tag.removeprefix("v").removeprefix("V"))
         powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
         helper = subprocess.Popen(
             [str(powershell), "-NoProfile", "-STA", "-EncodedCommand",

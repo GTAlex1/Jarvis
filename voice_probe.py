@@ -6,13 +6,15 @@ from threading import Event
 import zlib
 
 from commands import parse
+from command_language import normalize_order
 from audio_input import AudioFormat, PcmConverter, input_devices
 from voice_audio import installed_voices, test_synthesis
 from speech_cancel import SpeechCancellation
 from speakers import Profile
 from biometric_audio import Reason, extract, verify
 from voice_recognition import (
-    CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector, local_speaker_model, spanish_model,
+    CHUNK_FRAMES, RATE, SAMPLE_BYTES, Conversation, RecognitionProbe, SpanishRecognizer,
+    WakeDetector, local_speaker_model, spanish_model, corroborate_wake, safe_redecode,
 )
 
 
@@ -46,6 +48,8 @@ def test_audio(folder):
         if states != expected_states or order != expected_order:
             raise AssertionError(f"{name}: estados {states}, orden {order}")
         report[name] = "correcto"
+    spanish_activation(model, folder)
+    report["activación_española_y_negación"] = "correcto"
     high_rate_command(model, command)
     report["reconocimiento_192khz"] = "correcto"
     dialogue_audio(model, command, fixture(folder, "stop"), silence)
@@ -53,6 +57,30 @@ def test_audio(folder):
     verify_synthetic_speakers(model, command, fixture(folder, "stop"), wake)
     report["verificación_local_de_hablante"] = "correcto"
     return report
+
+
+def spanish_activation(model, folder):
+    cases = (
+        ("overhaul-help", ("help",), True),
+        ("overhaul-calc", ("open", "calculadora"), True),
+        ("overhaul-negcalc", None, True),
+        ("overhaul-prefix", None, False),
+    )
+    for name, expected, activation in cases:
+        states = []
+        wake = WakeDetector(3, corroborate=lambda data, level: corroborate_wake(model, data, level))
+        session = Conversation(wake, lambda: SpanishRecognizer(model), states.append,
+                               lambda data: safe_redecode(model, data))
+        data = bytes(10000) + fixture(folder, name) + bytes(3 * RATE * SAMPLE_BYTES)
+        step = CHUNK_FRAMES * SAMPLE_BYTES
+        actual = None
+        for offset in range(0, len(data), step):
+            item = session.feed(data[offset:offset + step], offset / (RATE * SAMPLE_BYTES))
+            if item and item.understood:
+                actual = parse(normalize_order(item.text))
+                break
+        if actual != expected or ("listening" in states) != activation:
+            raise AssertionError(f"{name}: estado {states}, intención {actual}")
 
 
 def verify_synthetic_speakers(model, command, same, different):

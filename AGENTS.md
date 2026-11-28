@@ -36,3 +36,11 @@ JARVIS es un asistente de distribución pública. Windows es la plataforma actua
 - Distingue muestra corta, ruido, silencio, saturación, falta de coincidencia y fallo de verificación. Permite repetir la orden y comprobar el perfil localmente. Una coincidencia sintética no valida a un hablante real.
 - Mantén los diagnósticos exportables libres de grabaciones, transcripciones, firmas y nombres de perfiles. Registra categorías y motivos de aprobación, cancelación y rechazo.
 - Desde 0.6.4.1 el actualizador reconoce hasta cuatro componentes. Los clientes anteriores requieren reemplazar manualmente el ejecutable para adoptar esta revisión. Conserva el estado local durante la sustitución.
+
+## Reconocimiento y verificación de resultados
+
+- Separa captura, actividad vocal, activación, transcripción, biometría, intención, permisos, ejecución, comprobación del resultado y síntesis. Mantén los controladores y APIs nativas en adaptadores.
+- Mide cambios de latencia, precisión y recursos con un corpus reproducible. Distingue muestras sintéticas, simulaciones y validación física. Conserva la accesibilidad, las rutas de audio que funcionan y el consumo reducido en reposo.
+- Distingue una señal, un candidato de activación y una transcripción de la autorización y el resultado de escritorio. Cuando sea posible, verifica el estado observado del sistema antes de afirmar que una acción terminó. Evita ejecutar operaciones de riesgo deducidas por aproximación.
+- La adaptación de voz y los alias son voluntarios, editables y locales. Una voz, una aprobación o una transcripción no pueden modificar automáticamente los ajustes de seguridad ni enseñar asociaciones.
+- Conserva la compatibilidad con tres y cuatro componentes y con los sufijos `-alpha.N`, `-beta.N` y `-rc.N`. Mantén el canal de distribución predeterminado y valida descarga, recibo de arranque y restauración. Documenta las migraciones puente y sincroniza la wiki.

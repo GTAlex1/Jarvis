@@ -153,3 +153,20 @@ def save_security_settings(policy):
 
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "SecuritySettings", 0, winreg.REG_SZ, json.dumps(policy.serialized()))
+
+
+def adaptation_settings():
+    from voice_adaptation import Adaptation
+
+    try:
+        saved = json.loads(read_value(SETTINGS_KEY, "VoiceAdaptation", "{}"))
+        return Adaptation(saved.get("enabled", False), tuple(tuple(item) for item in saved.get("aliases", ())))
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return Adaptation()
+
+
+def save_adaptation_settings(adaptation):
+    import winreg
+
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "VoiceAdaptation", 0, winreg.REG_SZ, json.dumps(asdict(adaptation)))

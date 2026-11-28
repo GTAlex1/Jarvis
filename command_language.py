@@ -3,21 +3,34 @@ from difflib import SequenceMatcher
 import re
 import unicodedata
 
-from commands import WAKE_PREFIX
+from commands import WAKE_PREFIX, target_name
 
+# Group exact verb surfaces by intent. Clitics are stripped only when the
+# resulting form belongs to a known verb.
 VERBS = {
-    "abre": ("abrir", "abrire", "abreme", "abrase", "arranca", "arrancar", "iniciar", "inicia", "ejecuta"),
-    "cierra": ("cerrar", "cerrare", "cierrame", "cierre", "cierres", "cerralo"),
-    "minimiza": ("minimizar", "minimizare", "minimice", "minimizame"),
-    "maximiza": ("maximizar", "maximizare", "maximice", "maximizame"),
-    "restaura": ("restaurar", "restaurare", "restaure"),
-    "enfoca": ("enfocar", "enfocare", "enfoque", "activar", "activa"),
-    "centra": ("centrar", "centrare", "centre"),
-    "mueve": ("mover", "movere", "mueveme", "mueva", "colocar", "coloca", "poner", "pon"),
+    "abre": ("abre", "abrir", "abrire", "abrase", "arranca", "arrancar", "iniciar", "inicia", "ejecuta", "ejecutar"),
+    "cierra": ("cierra", "cerra", "cerrar", "cerrare", "cierre", "cierres", "quita", "quitar"),
+    "minimiza": ("minimiza", "minimizar", "minimizare", "minimice"),
+    "maximiza": ("maximiza", "maximizar", "maximizare", "maximice"),
+    "restaura": ("restaura", "restaurar", "restaurare", "restaure"),
+    "enfoca": ("enfoca", "enfocar", "enfocare", "enfoque", "activar", "activa"),
+    "centra": ("centra", "centrar", "centrare", "centre"),
+    "mueve": ("mueve", "mover", "movere", "mueva", "colocar", "coloca"),
+    "pon": ("pon", "poner", "pone"),
+    "reinicia": ("reinicia", "reiniciar", "reinicie", "reiniciare"),
+    "apaga": ("apaga", "apagar", "apague", "apagare"),
 }
 VARIANTS = {form: verb for verb, forms in VERBS.items() for form in forms}
-UNSAFE = re.compile(r"\b(?:no|nunca|jamas|excepto|quizas|si puedes luego|a lo mejor)\b")
-REQUEST = re.compile(r"^(?:(?:puedes|podrias|quiero que|por favor|me puedes)\s+)+")
+CLITIC = re.compile(r"(?:melo|mela|melos|melas|me|nos|lo|la)$")
+UNSAFE = re.compile(r"\b(?:no|nunca|jamas|excepto|quizas|cuando|si acaso|a lo mejor|y luego|"
+                    r"imagina|supongamos|dijiste|dijo|dije|dice|dicen|dile|digan|decir|por ejemplo|"
+                    r"podria|deberia|deberias|habria|en caso de|voy a|iba a)\b")
+REQUEST = re.compile(r"^(?:(?:puedes|podrias|quiero que|por favor|porfa|me puedes|me podrias)"
+                     r"[, ]+)+")
+PLACEMENT = re.compile(r"\b(?:izquierda|derecha|esquina|mitad|monitor|pantalla|centro|arriba|abajo)\b")
+POWER_TARGETS = {"ordenador", "equipo", "pc", "computadora", "computador", "compu", "ordenador de nuevo"}
+CALCULATOR = {"calculo", "calculadora", "calculadora de windows", "calculadora windows", "calculator"}
+REACTIONS = {"no", "no gracias", "no, gracias", "si", "si por favor", "si, confirma la orden"}
 
 
 def simplify(text):
@@ -26,15 +39,34 @@ def simplify(text):
 
 
 def normalize_order(text):
-    text = " ".join(simplify(text).strip(" ¿?¡!.,").split())
-    text = WAKE_PREFIX.sub("", text)
-    text = REQUEST.sub("", text)
-    text = re.sub(r"[, ]+por favor$", "", text).strip()
-    if UNSAFE.search(text) and text not in {"no", "no gracias", "no, gracias"}:
+    if any(char in text for char in ('"', "«", "»", "“", "”")):
         return ""
+    original = " ".join(simplify(text).strip().split())
+    text = WAKE_PREFIX.sub("", original.strip(" ¿?¡!.,"))
+    if text in REACTIONS:
+        return text
+    if UNSAFE.search(text):
+        return ""
+    requested = REQUEST.match(text)
+    if "?" in original and not requested and text != "que puedes hacer":
+        return ""
+    text = REQUEST.sub("", text)
+    text = re.sub(r"[, ]+por favor$|[, ]+porfa$", "", text).strip()
     word, separator, target = text.partition(" ")
-    # Keep multiword desktop shortcuts, such as «minimiza todo», intact.
-    return VARIANTS.get(word, word) + separator + target
+    base = VARIANTS.get(word) or VARIANTS.get(CLITIC.sub("", word), word)
+    if base == "pon":
+        base = "mueve" if PLACEMENT.search(target) else "abre"
+    if base in {"reinicia", "apaga"}:
+        if target_name(target) not in POWER_TARGETS:
+            return ""
+        # ASR corrections for destructive actions must be explicit lexical
+        # variants, never a fuzzy match to an arbitrary system command.
+        return f"{base} el equipo"
+    if " si " in f" {target} " or re.search(r"[,;]|\b(?:o|y) (?:abre|cierra|apaga|reinicia)\b", target):
+        return "" if text != "silencia o activa el sonido" else text
+    if base == "abre" and target_name(target) in CALCULATOR:
+        return "abre calculadora"
+    return base + separator + target
 
 
 def phonetic_key(text):

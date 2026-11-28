@@ -163,3 +163,50 @@ El actualizador de 0.6.4 y anteriores solo analiza tres componentes. El primer s
 - **Físicas pendientes.** Prueba primero el perfil conservado con «Jarvis, ayuda» y con una orden larga, seguida de «sí» o «repite». Compara una sola frase con una activación seguida de pausa. Si falla, prueba o renueva el perfil en la misma interfaz de audio y exporta el diagnóstico.
 - **Físicas pendientes.** En Libertad con biometría activa, cierra una ventana de prueba, captura toda la pantalla y cancela una cuenta atrás de reinicio. Comprueba que una persona presente, otra en una llamada y una grabación no causen operaciones imprevistas. La biometría sigue admitiendo falsos positivos y negativos.
 - **Físicas pendientes.** Compara la distorsión con JARVIS activo y pausado durante llamadas de Discord y WhatsApp en MME, DirectSound y WASAPI. Comprueba los nombres en inglés y las órdenes naturales una vez superado el bloqueo biométrico.
+
+## Activación y reconocimiento en 0.6.4.2
+
+El informe físico de 0.6.4.1 tuvo 14 comprobaciones correctas, cinco parciales, dos fallidas y una pendiente. El propietario validó la persistencia de perfiles y la coexistencia con Discord y WhatsApp en su equipo. Quedaron fallos al hablar sin pausa, falsos disparos durante conversaciones y dudas sobre voces ajenas. La prueba aislada del perfil quedó pendiente.
+
+El corpus anterior combinaba una activación sintética inglesa y una orden española. El detector anterior falló en varias activaciones sintetizadas en español y se disparó al oír «Jarvis» en mitad de una de las frases de prueba. También elegía el final más tardío al encontrar varias pronunciaciones, dejando únicamente 25 ms de contexto antes del corte. Se separó el detector acústico en `wake_word.py`, se retiró una entrada amplia del diccionario, se introdujo la comprobación de actividad al principio de la frase y se corroboran los candidatos acústicos alternativos con Vosk. Si la transcripción general falla, una gramática secundaria que exige oír «Jarvis» puede recuperar dos órdenes acotadas: pedir ayuda y abrir la calculadora. Incluye opciones competidoras de negación. Las acciones sensibles requieren una intención explícita de alta confianza.
+
+El mismo texto puede tener varias intenciones según su verbo, destino y contexto. La normalización admite clíticos y variantes peninsulares y latinoamericanas, y descarta negaciones, citas y condiciones reconocidas. La lista de programas cuenta identidades de aplicación, de modo que dos entradas equivalentes no abren un diálogo. Una coincidencia aproximada aislada se pregunta por su nombre. Los alias aprendidos son correcciones explícitas en una ventana local.
+
+La voz de una persona puede activar la transcripción sin superar la biometría. El extractor usa el tramo de las palabras reconocidas y vuelve a verificar cada turno. Solo una consulta de ayuda puede aprovechar audio continuo de la activación cuando su propia muestra es corta. Se conservan el umbral, los cuatro perfiles de seguridad y los datos cifrados. Las grabaciones, imitaciones y voz sintética siguen fuera del alcance de una garantía de identidad. Un registro que indica «solicitada a Windows» acredita el envío de la operación; verificar el inicio real de videojuegos corresponde a 0.6.5.
+
+El diagnóstico desde **Perfiles de voz** exporta los últimos eventos de señal, activación o continuación, transcripción, hablante, intención, permisos y resultado. Incluye estados y datos técnicos sin guardar texto, voz, firmas, identidad ni credenciales en el archivo exportado. En espera se conserva un búfer corto en memoria. Durante la respuesta solo se atienden interrupciones y se descarta el audio residual antes de volver a escuchar.
+
+### Evaluación de motores y rendimiento
+
+| Motor | Evaluación |
+| --- | --- |
+| PocketSphinx + VAD, Vosk y x-vector | Se mantienen. Funcionan en CPU y sin conexión. El modelo español pequeño ocupa aproximadamente 39 MB comprimidos y el hablante unos 13 MiB. Se conservan las firmas existentes. La segunda comprobación se ejecuta cuando hay un candidato acústico alternativo y el rescate léxico es puntual. |
+| openWakeWord | Detector dedicado con ONNX en Windows. Su modelo publicado apunta a «hey jarvis» en inglés. El código es Apache 2.0 y los modelos incluidos tienen licencia CC BY-NC-SA 4.0. Entrenar y validar «Jarvis» en español, «Nexora» o una palabra personalizada requiere datos con permisos adecuados. |
+| Whisper, whisper.cpp y faster-whisper | Whisper y whisper.cpp tienen distribución MIT. whisper.cpp ofrece CPU y pesos cuantizados. Se midió faster-whisper Tiny multilingüe con CTranslate2 en CPU int8 y dos hilos. Su archivo de pesos de prueba ocupa 75,5 MB adicionales y no se incorpora al ejecutable. Se podrán evaluar modelos mayores o inferencia puntual con voces reales en un equipo de referencia. |
+| SpeechBrain ECAPA | El modelo publicado es Apache 2.0, entrenado con VoxCeleb y con PyTorch como dependencia en su integración habitual. Requeriría calibrar con llamadas, acentos y órdenes cortas y migrar las firmas. Se evaluó por documentación y empaquetado. |
+
+Fuentes de modelos y licencias. [Vosk](https://alphacephei.com/vosk/models) · [openWakeWord](https://github.com/dscripka/openWakeWord) · [Whisper](https://github.com/openai/whisper) · [whisper.cpp](https://github.com/ggml-org/whisper.cpp) · [faster-whisper](https://github.com/SYSTRAN/faster-whisper) · [SpeechBrain ECAPA](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb)
+
+Medición reproducible con `python benchmark_voice.py` y `--source` para el código de 0.6.4.1. Son diez casos sintéticos y una pasada en Linux sobre AMD EPYC 9V74 con Python 3.12. La latencia mide procesamiento fuera de tiempo real por clip. La CPU incluye el trabajo de todos los hilos. La RAM es el pico del proceso. La prueba de reposo alimenta 60 segundos de silencio al detector, sin micrófono ni audio simultáneo. Ninguna de las tres configuraciones usa GPU.
+
+| Configuración | Casos correctos | Mediana por clip | CPU total del corpus | Pico de RAM | CPU del detector en 60 s de silencio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0.6.4.1 | 3/10 | 78 ms | 1.816 ms | 177,2 MiB | 372 ms |
+| 0.6.4.2 | 8/10 | 575 ms | 5.351 ms | 183,4 MiB | 375 ms |
+| faster-whisper Tiny, CPU int8 | 3/10 | 1.199 ms | 22.473 ms | 254,6 MiB | — |
+
+El corpus incluye tres casos que no deben producir ninguna acción. faster-whisper se midió como alternativa que transcribe el enunciado completo y requiere que el nombre de activación aparezca al inicio del texto. La síntesis produjo sustituciones de ese nombre. Las cifras no son comparables con WER de producción ni sirven como tasa biométrica. Los dos casos pendientes del corpus revisado son órdenes de reinicio que la transcripción no entendió. El sistema las rechazó. La verificación física de rendimiento y precisión en Windows con micrófono real sigue pendiente.
+
+### Versionado, canales y recuperación
+
+Usa `mayor.menor.parche` o `mayor.menor.parche.revisión`. Las etiquetas preliminares usan `-alpha.N`, `-beta.N` y `-rc.N` con un número positivo. Para la misma base, Alpha precede a Beta, RC y la versión final. El canal estable busca etiquetas numéricas completas, el futuro canal beta podrá recibir Beta y RC, y desarrollo podrá recibir Alpha. El selector público de canales queda en el roadmap. Las versiones borrador y activos de otro formato se omiten.
+
+0.6.4.2 se identifica como validación interna en las notas. Usa etiqueta numérica y el formato de publicación que el actualizador 0.6.4.1 ya sabe leer. No se marca como release principal de GitHub. Los clientes 0.6.4 y anteriores deberán reemplazar manualmente el ejecutable una sola vez con JARVIS cerrado. Después, **Actualizar y reiniciar** verifica la huella SHA-256 y el recibo de arranque. Si la versión llega a iniciarse pero el recibo es inválido o falta, el auxiliar cierra únicamente el proceso lanzado y restaura la copia anterior. El registro indica la ubicación de esa copia si Windows impide restaurarla.
+
+### Comprobaciones físicas de 0.6.4.2
+
+1. Actualiza desde 0.6.4.1 con **Actualizar y reiniciar**. Comprueba la versión, el dispositivo, el perfil de voz y Libertad con biometría activa.
+2. Prueba el perfil seleccionado. Con el panel cerrado, di «Jarvis, ayuda» y «Jarvis, abre la calculadora» de corrido, con pausa y hablando con naturalidad. Repite una orden corta de seguimiento y una orden larga en días distintos.
+3. Habla con otra persona con JARVIS activo durante varios minutos. Pídele que pruebe una orden segura por separado y que intente continuar una conversación iniciada por ti, en persona y por Discord. Prueba audio reproducido y revisa el diagnóstico aunque no se ejecute nada.
+4. Prueba «Cerrá Spotify», «Ponme la calculadora», «Reiníciame el ordenador» y «No cierres Spotify». Si pruebas reinicio, guarda el trabajo y comprueba «cancela» durante la cuenta atrás. Añade, desactiva y borra un alias voluntario.
+5. Conserva una prueba de llamada con Discord y WhatsApp con la escucha activa y pausada. Si tienes otros dispositivos, cambia entre WASAPI, MME, DirectSound y ASIO disponible, y comprueba USB, Bluetooth, analógico y el cambio de predeterminado mientras la aplicación está abierta. Anota formato, ruta y fase del fallo. Steam mantiene su comprobación física como control de 0.6.5.

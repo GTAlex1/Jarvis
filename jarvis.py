@@ -70,10 +70,10 @@ def launch_matches(apps, query, exact_only=False):
         if query in group:
             names = group
             break
-    exact = [app for app in apps if normalize(app[0]) in names]
+    exact = list({app[1].casefold(): app for app in apps if normalize(app[0]) in names}.values())
     if exact or exact_only:
         return exact
-    return [app for app in apps if query in normalize(app[0])]
+    return list({app[1].casefold(): app for app in apps if query in normalize(app[0])}.values())
 
 
 def half(bounds, side):
@@ -246,7 +246,8 @@ class Desktop:
             matches = launch_matches(apps, title, exact_only=voice)
             approximate = voice and not matches
             if approximate:
-                matches = rank_targets(title, apps, lambda item: (item[0],))
+                matches = tuple({app[1].casefold(): app for app in
+                                 rank_targets(title, apps, lambda item: (item[0],))}.values())
             if not matches:
                 message = f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
                 if voice:

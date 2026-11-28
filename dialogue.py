@@ -199,6 +199,9 @@ class Dialogue:
     def options(self, reminder=""):
         _, result = self.pending
         count = len(result.options)
+        if count == 1 and result.kind == "aplicaciones":
+            label = result.options[0].label.strip()[:130]
+            return self.say(f"¿Te refieres a {label}? Di sí o repite el nombre.")
         choices = result.options[self.option_offset:self.option_offset + PAGE_SIZE[self.detail]]
         segments = []
         for i, item in enumerate(choices, self.option_offset):
@@ -215,6 +218,8 @@ class Dialogue:
         command, result = self.pending
         key = re.sub(r"^(?:me refiero a |elige |quiero )", "", key)
         key = re.sub(r"[ ,]+por favor$", "", key)
+        if len(result.options) == 1 and result.kind == "aplicaciones" and key in YES:
+            return SelectedCommand(command, result.options[0])
         value = re.sub(r"^(?:(?:la|el) |(?:opcion|numero) )+", "", key).strip()
         if value.isascii() and value.isdigit() and len(value) <= 4:
             number = int(value)

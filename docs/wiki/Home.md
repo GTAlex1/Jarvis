@@ -16,13 +16,15 @@ JARVIS se queda en la bandeja del sistema y controla ventanas, aplicaciones y fu
 
 El estado aparece en el panel y al pasar el ratón sobre el icono de la bandeja. Los modelos incluidos trabajan localmente. El audio se procesa en memoria y la entrada se descarta durante las respuestas de JARVIS. Puedes desactivar la escucha desde la bandeja y seguir usando el panel.
 
-## Seguridad de voz en 0.6.4.1
+## Voz y seguridad en 0.6.4.2
 
 **Perfiles de voz** permite comprobar muestras, repetir una grabación, renovar el perfil y exportar un diagnóstico sin audio ni firmas. La verificación distingue muestras cortas, ruido, saturación y voces que no coinciden. Si pide más voz, repite la orden en una frase completa.
 
 En **Seguridad y permisos** elige Libertad, Equilibrado, Estricto o Personalizado y configura **Verificar el hablante** por separado. Libertad permite las operaciones habituales sin introducir códigos. Equilibrado solicita confirmación verbal para las acciones intermedias. Puedes decir «cancela» durante la cuenta atrás de apagado o reinicio. Desmarca **Micrófono** en la bandeja para pausar la escucha.
 
-Desde 0.6.4 o anterior, cierra JARVIS y reemplaza el ejecutable por el de 0.6.4.1 para conservar tus preferencias y perfiles. Quedan pendientes las pruebas con el propietario, otros hablantes y llamadas reales. [Políticas y actualización](https://github.com/GTAlex1/Jarvis#seguridad-y-permisos) · [Pruebas de la revisión](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md#comprobaciones-de-la-revisión)
+**Adaptación de voz**, en la bandeja, permite guardar y editar pronunciaciones alternativas sin registrar audio, así como desactivarlas o borrarlas. El diagnóstico distingue activación, transcripción, autorización y ejecución. Puedes activar el asistente con «Jarvis, ayuda» o dar la orden tras una pausa.
+
+0.6.4.2 se publica para validación interna. Desde 0.6.4.1 usa **Actualizar y reiniciar**. Si usas 0.6.4 o anterior, cierra el programa y reemplaza JARVIS.exe una vez. [Actualización y configuración](https://github.com/GTAlex1/Jarvis#actualizaciones) · [Pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/main/Guia.md#comprobaciones-físicas-de-0642)
 
 ## Conversar sin abrir el panel
 

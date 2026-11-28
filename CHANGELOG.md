@@ -1,5 +1,13 @@
 # Cambios de JARVIS
 
+## 0.6.4.2 · Validación interna
+
+- Separación del detector de activación y de la transcripción. Una segunda comprobación léxica valida variantes acústicas del inicio de una frase. El búfer guarda el inicio de la orden para transcripción y verificación.
+- Normalización de verbos y clíticos, corrección de nombres habituales y selección directa de destinos exactos deduplicados. Las órdenes sensibles con confianza insuficiente se rechazan. Adaptación de voz opcional y local desde la bandeja.
+- La biometría usa el intervalo de las palabras reconocidas. La activación sola carece de autorización y la evidencia combinada solo se admite para ayuda. Los eventos distinguen audio, activación, texto, hablante, permiso y resultado.
+- El actualizador compara versiones numéricas y preliminares, comprueba la versión arrancada y restaura la anterior si el binario nuevo falla. Detección compatible desde 0.6.4.1.
+- Validación física de la revisión pendiente. En 0.6.4.1 se informaron 14 comprobaciones correctas, cinco parciales, dos fallidas y una pendiente. En ese equipo dejó de reproducirse la distorsión durante llamadas. [Pruebas físicas](Guia.md#comprobaciones-físicas-de-0642)
+
 ## 0.6.4.1
 
 - **BUG-064-001**. Se elimina el veto biométrico de la palabra de activación aislada y se comparte la extracción con el registro. Las órdenes se verifican con su propio audio. Una orden breve puede incorporar la activación de la misma intervención si es continua. Se distinguen insuficiencia, falta de coincidencia y problemas de audio o perfil.

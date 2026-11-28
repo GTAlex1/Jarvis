@@ -103,7 +103,7 @@ def classify(intent, selected_label=""):
             return "lock"
         if effect in {"shutdown", "restart"}:
             return "power"
-        return "window"
+        return "window" if effect in {"desktop", "task_view", "minimize_all", "restore_all"} else "unknown"
     if action in {"apps", "windows", "screens", "help"}:
         return "query"
     if action in {"close", "exit"}:

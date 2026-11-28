@@ -26,7 +26,11 @@ La animación se detiene al ocultar o minimizar el panel.
 3. Puedes cerrar el panel con la X. Di «Jarvis, abre Spotify» de corrido o con una pausa breve. JARVIS verifica la voz que pronuncia la orden. Si dices «Jarvis» por separado y la muestra es demasiado corta, la activación queda pendiente hasta verificar la frase siguiente.
 4. Comprueba el estado en el panel o en el icono de la bandeja. Si un turno es demasiado breve para verificarlo, usa una frase más larga, como «Sí, continúa con la explicación».
 
-Spotify y los nombres de juegos deben figurar entre las aplicaciones que Windows expone o las ventanas abiertas. JARVIS acepta variantes como «cerraré Spotify» y puede sugerir una coincidencia para «roquet lig» sin ejecutarla automáticamente.
+Puedes decir «Cerrá Spotify», «Ponme la calculadora» o «Reiníciame el ordenador». Las coincidencias exactas con una misma identidad de aplicación se abren directamente si lo permite tu perfil. Las coincidencias aproximadas se confirman. La detección universal de juegos queda en 0.6.5.
+
+### Adaptación de voz
+
+Abre **Adaptación de voz** desde la bandeja. Añade la palabra que suele transcribir JARVIS y el nombre exacto de la aplicación. Por ejemplo, puedes asociar «es potify» a «Spotify». Usa **Guardar** para aplicar cambios, desmarca la opción para suspenderlos o usa **Restablecer** para borrarlos. Las asociaciones son locales y solo se guardan mediante esta ventana. Las reglas de biometría y permisos se aplican a la intención resultante.
 
 ### Perfiles de voz
 
@@ -61,7 +65,7 @@ Pulsa **Probar micrófono** y di «abre Spotify». La prueba distingue señal, a
 
 ## Actualizaciones
 
-**Para pasar de 0.6.4 o anterior a 0.6.4.1**, usa **Salir de JARVIS** en la bandeja y reemplaza el ejecutable por la [descarga de 0.6.4.1](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.4.1). Usa la misma carpeta y nombre si tienes activado el inicio automático. La versión anterior solo entiende números de tres componentes. El reemplazo conserva tus ajustes y perfiles.
+**0.6.4.2 es una revisión experimental para validación interna.** Desde 0.6.4.1 puedes usar **Buscar actualizaciones** y **Actualizar y reiniciar**. Desde 0.6.4 o anterior, sal de JARVIS en la bandeja y reemplaza el ejecutable una sola vez por el de la [release de 0.6.4.2](https://github.com/GTAlex1/Jarvis/releases/tag/v0.6.4.2). Conserva el nombre y la carpeta si tienes configurado el inicio automático. Se conservan tus datos locales.
 
 JARVIS comprueba GitHub Releases al arrancar. Si hay una versión nueva, pulsa **Actualizar y reiniciar** y confirma el reinicio. La descarga se verifica con SHA-256 antes de sustituir el ejecutable. El actualizador se incluye desde la versión 0.3.0. Para aplicar la actualización, JARVIS sale por completo, espera a que Windows libere el ejecutable y se vuelve a abrir. El actualizador conserva la copia anterior hasta que el nuevo arranque se confirma. Si falla, guarda el paso y el error en `%LOCALAPPDATA%/JARVIS/actualizacion.log`.
 

@@ -13,12 +13,14 @@ import json
 from pathlib import Path
 
 from assistant import Assistant
+from adaptation_dialog import AdaptationDialog
 from commands import clean, parse
 from permissions import BUTTON, CODE, HOTKEY, VERBAL, classify
 from security_dialog import SecurityDialog
 from dialogue import Clarification, SelectedCommand
 from preferences import (microphone_enabled, save_voice_settings, set_microphone,
-                         set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings)
+                         set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings,
+                         adaptation_settings, save_adaptation_settings)
 from speaker_dialog import SpeakerDialog
 from voice_authorization import (ApprovalAnswer, ExitAction, LocalApproval, PendingApproval,
                                  PowerAction, PowerScheduled, RejectedAction, UNVERIFIED)
@@ -48,6 +50,8 @@ class Resident:
         self.voice_options = voice_settings()
         self.policy = security_settings()
         self.security_dialog = None
+        self.adaptation_dialog = None
+        self.adaptation = adaptation_settings()
         self.revision = 0
         self.power_job = None
         configure_log()
@@ -70,6 +74,7 @@ class Resident:
             lambda speaker: self.defer(self.cancel_pending, speaker),
         )
         self.voice.set_security(self.policy.biometrics)
+        self.voice.set_adaptation(self.adaptation)
         self.voice.set_profiles(self.profiles, self.profile_error)
         self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
         root.protocol("WM_DELETE_WINDOW", self.hide)
@@ -121,6 +126,7 @@ class Resident:
             ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
             ("Ajustes de voz…", False, self.open_voice_settings),
             ("Perfiles de voz…", False, self.open_speakers),
+            ("Adaptación de voz…", False, self.open_adaptation),
             ("Seguridad y permisos…", False, self.open_security),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
@@ -166,6 +172,18 @@ class Resident:
             lambda: self.voice.test_progress,
         )
 
+    def open_adaptation(self):
+        if self.adaptation_dialog is not None and self.adaptation_dialog.window.winfo_exists():
+            self.adaptation_dialog.window.lift()
+            return
+        self.adaptation_dialog = AdaptationDialog(self.root, self.adaptation, self.save_adaptation)
+
+    def save_adaptation(self, options):
+        save_adaptation_settings(options)
+        self.invalidate_voice()
+        self.adaptation = options
+        self.voice.set_adaptation(options)
+
     def open_security(self):
         if self.security_dialog is not None and self.security_dialog.window.winfo_exists():
             self.security_dialog.window.lift()
@@ -206,6 +224,7 @@ class Resident:
         if target:
             snapshot = {"version": VERSION, "captura": self.voice.current_route,
                         "biometria": dict(self.voice.last_biometrics),
+                        "eventos": list(self.voice.recent_stages.copy()),
                         "verificacion_activa": self.policy.biometrics,
                         "umbral": self.voice_options.speaker_threshold,
                         "estado_perfiles": "ilegible" if self.profile_error else ("disponibles" if self.profiles else "ausentes")}
@@ -332,6 +351,7 @@ class Resident:
             return
         result = self.command_result(completed)
         if isinstance(result, LocalApproval):
+            self.voice.trace("permiso", "requiere_confirmación")
             self.require_confirmation(result, speaker, reply)
             return
         if isinstance(result, ExitAction):
@@ -347,9 +367,14 @@ class Resident:
             result = self.schedule_power(result, speaker, revision)
         if isinstance(result, RejectedAction):
             LOG.info("permisos: rechazada categoría=%s motivo=%s", category, result.reason)
+            self.voice.trace("permiso" if result.reason == "politica" else "resultado", result.reason)
             result = result.message
         elif not isinstance(result, (Clarification, PowerScheduled)):
             LOG.info("permisos: orden despachada categoría=%s", category)
+            self.voice.trace("permiso", "permitida")
+            self.voice.trace("resultado", "solicitada_a_windows" if category == "open" else "devuelto_por_ejecutor")
+        elif isinstance(result, Clarification):
+            self.voice.trace("permiso", "destino_por_aclarar")
         shown = result.written if isinstance(result, Clarification) else result.message if isinstance(result, PowerScheduled) else result
         self.record_voice(shown, "reply")
         if reply is not None:
@@ -426,6 +451,7 @@ class Resident:
         callback = lambda: self.finish_power(token, operation, speaker, revision)
         self.power_job = token, self.root.after(10000, callback)
         LOG.info("permisos: cuenta atrás categoría=power acción=%s", operation)
+        self.voice.trace("permiso", "cuenta_atrás")
         return PowerScheduled(f"Voy a {verb} el equipo en diez segundos. Di cancela para detener la operación.")
 
     def finish_power(self, token, operation, speaker, revision):
@@ -442,6 +468,7 @@ class Resident:
             self.record_voice("Windows no pudo apagar o reiniciar. Comprueba los permisos de la sesión.", "reply")
         else:
             LOG.info("permisos: ejecutada categoría=power acción=%s", operation)
+            self.voice.trace("resultado", "solicitada_a_windows")
 
     def invalidate_voice(self):
         self.revision += 1

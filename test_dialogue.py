@@ -201,6 +201,7 @@ class VoiceIntegrationTest(unittest.TestCase):
         resident.voice_log = deque(maxlen=24)
         resident.events = SimpleQueue()
         resident.assistant = Mock()
+        resident.voice = Mock()
         resident.show = Mock()
         reply = Future()
         output = Clarification("Hay varias ventanas.", (TargetOption("Una", (1,)),), "ventanas")

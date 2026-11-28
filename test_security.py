@@ -140,6 +140,7 @@ def resident_fixture():
     resident.voice_options = VoiceSettings(enabled=True)
     resident.pending_approval = resident.power_job = None
     resident.tray = Mock()
+    resident.voice = Mock()
     resident.revision = 0
     resident.policy = SecurityPolicy("Estricto")
     resident.assistant = Mock()

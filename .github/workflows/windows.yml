@@ -29,7 +29,7 @@ jobs:
       - run: python prepare_voice_model.py
       - run: python -m compileall -q .
       - name: Prueba comandos, bandeja, voz y rutas de captura sin micrófono físico
-        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio
+        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9'); assert version_tuple('0.6.4') < version_tuple('0.6.4.1') < version_tuple('0.6.5')"
       - name: Empaqueta JARVIS y los motores de voz
@@ -76,7 +76,7 @@ jobs:
           } finally {
             Get-Process JARVIS -ErrorAction SilentlyContinue | Stop-Process -Force
           }
-      - name: Prueba sustitución, recuperación y actualización desde 0.4.1 y 0.6.4
+      - name: Prueba sustitución, recuperación y actualización desde 0.4.1, 0.6.4 y 0.6.4.1
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,6 +91,11 @@ jobs:
           gh release download v0.6.4 --repo $env:GITHUB_REPOSITORY --pattern JARVIS.exe --dir previous-probe
           if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el ejecutable de la 0.6.4.' }
           $env:JARVIS_TEST_PREVIOUS_EXE = (Resolve-Path previous-probe/JARVIS.exe).Path
+          git fetch --depth=1 origin tag v0.6.4.1
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el código de la 0.6.4.1.' }
+          gh release download v0.6.4.1 --repo $env:GITHUB_REPOSITORY --pattern JARVIS.exe --dir bridge-probe
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el ejecutable de la 0.6.4.1.' }
+          $env:JARVIS_TEST_BRIDGE_EXE = (Resolve-Path bridge-probe/JARVIS.exe).Path
           python -m unittest -v test_update_windows
       - uses: actions/upload-artifact@v4
         with:
@@ -130,9 +135,9 @@ jobs:
           $tag = "v$version"
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) { exit 0 }
-          if ($tag -eq 'v0.6.4.1') {
-            $notes = 'Descarga JARVIS.exe y reemplaza el anterior con JARVIS cerrado. Los actualizadores anteriores solo reconocen tres componentes de versión. Consulta el README para configurar la biometría y los permisos.'
-            gh release create $tag dist/JARVIS.exe --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY --title "JARVIS $tag" --notes $notes --latest=false
+          if ($tag -eq 'v0.6.4.2') {
+            $notes = 'Revisión experimental para validación interna. La verificación con micrófonos y hablantes reales de esta revisión sigue pendiente. 0.6.4.1 puede detectar e instalar esta actualización. 0.6.4 y anteriores requieren reemplazar el ejecutable una vez. Consulta la guía y el changelog.'
+            gh release create $tag dist/JARVIS.exe --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY --title "JARVIS $tag · Validación interna" --notes $notes --latest=false
           } else {
             gh release create $tag dist/JARVIS.exe --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY --title "JARVIS $tag" --generate-notes
           }

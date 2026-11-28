@@ -25,10 +25,12 @@ class PackagedUpdateTest(unittest.TestCase):
             time.sleep(0.2)
         self.fail("No se completó la condición de actualización a tiempo.")
 
-    def helper(self, folder, target, staged, pid, script=INSTALL):
+    def helper(self, folder, target, staged, pid, script=INSTALL, expected=None):
         env = dict(os.environ, LOCALAPPDATA=str(folder),
                    JARVIS_UPDATE_TARGET=str(target), JARVIS_UPDATE_STAGED=str(staged),
                    JARVIS_UPDATE_PID=str(pid), JARVIS_UPDATE_TEST="1")
+        if expected:
+            env["JARVIS_UPDATE_EXPECTED"] = expected
         powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
         return subprocess.Popen(
             [str(powershell), "-NoProfile", "-STA", "-EncodedCommand",
@@ -134,6 +136,30 @@ class PackagedUpdateTest(unittest.TestCase):
                 helper.communicate()
             subprocess.run(["taskkill", "/IM", target.name, "/T", "/F"], capture_output=True)
             old.wait(timeout=30)
+
+    @unittest.skipUnless(os.getenv("JARVIS_TEST_BRIDGE_EXE"), "Requiere el binario 0.6.4.1")
+    def test_automatic_update_from_0_6_4_1_uses_compatible_asset(self):
+        self.exercise_direct_upgrade("JARVIS_TEST_BRIDGE_EXE", "0.6.4.1",
+                                     "7ca1421c7b72b131779e08883d65e410b30b5ff46699bf5bde914e2498503826")
+
+    def test_rollback_of_started_binary_with_wrong_version_receipt(self):
+        folder = Path(tempfile.mkdtemp(prefix="JARVIS rollback versión "))
+        target = folder / f"JARVISReceiptProbe-{uuid4().hex}.exe"
+        staged = folder / "wrong.jarvis-update"
+        original = b"original preserved"
+        target.write_bytes(original)
+        shutil.copy2("dist/JARVIS.exe", staged)
+        helper = self.helper(folder, target, staged, 2147483647, expected="9.0.0")
+        try:
+            _, error = helper.communicate(timeout=100)
+            self.assertEqual(helper.returncode, 1, error.decode("utf-8", errors="replace"))
+            self.assertEqual(target.read_bytes(), original)
+            self.assertIn("no confirmó la versión", (folder / "JARVIS/actualizacion.log").read_text(encoding="utf-8-sig"))
+        finally:
+            if helper.poll() is None:
+                helper.kill()
+                helper.communicate()
+            subprocess.run(["taskkill", "/IM", target.name, "/T", "/F"], capture_output=True)
 
     def test_failed_start_restores_old_file_and_logs_error(self):
         folder = Path(tempfile.mkdtemp(prefix="JARVIS rollback "))

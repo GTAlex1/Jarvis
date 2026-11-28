@@ -1,4 +1,5 @@
 """Run the voice loop independently of the Tk event loop and command worker."""
+from collections import deque
 from concurrent.futures import TimeoutError
 from queue import Empty, SimpleQueue
 from threading import Event, Lock, Thread
@@ -7,6 +8,8 @@ from time import monotonic
 from preferences import VoiceSettings
 from commands import WAKE_WORD, clean, parse
 from command_language import normalize_order
+from permissions import CATEGORIES, classify
+from voice_adaptation import Adaptation
 from dialogue import STOP, Dialogue, Turn, split_speech
 from speech_cancel import SpeechCancellation
 from audio_input import CaptureError, DefaultInputChanged, capture_input, input_devices, reject_recognition
@@ -16,7 +19,7 @@ from biometric_audio import MESSAGES, Reason, extract, verify
 from speakers import ENROLLMENT_FRAMES
 from voice_authorization import UNVERIFIED
 from voice_recognition import (Conversation, RecognitionProbe, SpanishRecognizer, WakeDetector,
-                               local_speaker_model, spanish_model)
+                               local_speaker_model, spanish_model, corroborate_wake, safe_redecode)
 
 STATE_LABELS = {
     "disabled": "Escucha permanente desactivada",
@@ -32,7 +35,7 @@ STATE_LABELS = {
     "listening": "Escuchando la orden",
     "followup": "Escuchando tu respuesta",
     "processing": "Procesando voz",
-    "executing": "Ejecutando la orden",
+    "executing": "Validando la orden",
     "speaking": "Respondiendo",
     "unavailable": "Micrófono o voz no disponible",
 }
@@ -69,6 +72,9 @@ class VoiceService:
         self.profile_error = False
         self.biometrics = True
         self.last_biometrics = {}
+        self.adaptation = Adaptation()
+        self.recent_stages = deque(maxlen=40)
+        self.stage_session = 0
         self.current_route = None
         self.speaker_model = None
         self.enrollment_request = None
@@ -102,6 +108,16 @@ class VoiceService:
         self.profiles = tuple(profiles)
         self.profile_error = bool(error)
         self.changed.set()
+
+    def set_adaptation(self, options):
+        self.adaptation = options
+        self.changed.set()
+
+    def trace(self, stage, outcome):
+        # Never put names, transcript fragments, audio or signatures here.
+        entry = {"turno": self.stage_session, "fase": stage, "resultado": outcome}
+        self.recent_stages.append(entry)
+        LOG.info("voz turno=%s fase=%s resultado=%s", self.stage_session, stage, outcome)
 
     def set_security(self, biometrics):
         self.biometrics = biometrics
@@ -152,11 +168,14 @@ class VoiceService:
             self.last_state = event
             self.on_state(*event)
 
-    def recognize(self):
+    def speech_model(self):
         if self.model is None:
             self.model = spanish_model()
         self.model_used = monotonic()
-        return SpanishRecognizer(self.model)
+        return self.model
+
+    def recognize(self):
+        return SpanishRecognizer(self.speech_model())
 
     def list_options(self):
         try:
@@ -305,7 +324,8 @@ class VoiceService:
     def run_capture(self, settings):
         devices = input_devices(refresh=True)
         try:
-            detector = WakeDetector(settings.sensitivity)
+            detector = WakeDetector(settings.sensitivity, corroborate=lambda audio, sensitivity:
+                                    corroborate_wake(self.speech_model(), audio, sensitivity))
         except ERRORS as error:
             raise RecognitionError(f"No se pudo iniciar la detección de «Jarvis»: {error}") from error
         selection, interface = devices.migrate(settings.device, settings.interface)
@@ -408,10 +428,12 @@ class VoiceService:
     def listen(self, capture, detector, settings, automatic=False):
         failures = 0
         dialogue = Dialogue(settings.speech_detail, settings.conversational)
-        exchange = Conversation(detector, self.recognize, self.notify)
+        exchange = Conversation(detector, self.recognize, self.notify,
+                                lambda audio: safe_redecode(self.speech_model(), audio))
         owner = None
         threshold = settings.speaker_threshold / 100
         self.notify("waiting", capture.notice)
+        signal_reported = False
         while not self.changed.is_set():
             if self.speech_stop.is_set():
                 self.speech_stop.clear()
@@ -426,11 +448,16 @@ class VoiceService:
                 continue
             if exchange.active is None and now - self.model_used > MODEL_IDLE_SECONDS:
                 self.model = self.speaker_model = None
+            if not signal_reported and capture.level >= 3:
+                self.trace("audio", "señal_recibida")
+                signal_reported = True
             was_listening = exchange.active is not None
             following = exchange.following
             try:
                 transcript = exchange.feed(pcm, now)
                 if not was_listening and exchange.active is not None:
+                    self.stage_session += 1
+                    self.trace("activación", "reconocida")
                     owner = None
             except ERRORS as error:
                 raise RecognitionError(f"Falló el reconocimiento de voz: {error}") from error
@@ -443,6 +470,10 @@ class VoiceService:
                     self.check_route(automatic, failures)
             if transcript is None or self.changed.is_set():
                 continue
+            if following:
+                self.stage_session += 1
+                self.trace("activación", "continuación")
+            self.trace("transcripción", "clara" if transcript.understood else "baja_confianza")
             capture.pause()
             self.meter = (0, capture.label)
             text = clean(transcript.text)
@@ -460,10 +491,14 @@ class VoiceService:
                 turn = Turn(speech="De acuerdo, cancelado.", end=True)
             elif self.biometrics:
                 self.last_biometrics = {}
-                reason, speaker = verify(self.sample, bytes(exchange.audio), exchange.activation,
+                # A mixed or poorly delimited prefix can never authorize an
+                # operation. Only the non-sensitive help response may use it.
+                help_only = parse(normalize_order(transcript.text)) == ("help",)
+                audio, activation = exchange.speaker_audio(transcript, include_cue=help_only)
+                reason, speaker = verify(self.sample, audio, activation,
                                          self.profiles, threshold, owner)
                 self.last_biometrics.update(uso="orden", resultado=reason.value)
-                LOG.info("biometría: %s", reason.value)
+                self.trace("hablante", reason.value)
                 if speaker is None:
                     if reason == Reason.UNAUTHORIZED:
                         dialogue.clear()
@@ -486,6 +521,7 @@ class VoiceService:
                     turn = self.interpret(transcript, dialogue, settings, now, speaker)
             else:
                 owner = UNVERIFIED
+                self.trace("hablante", "verificación_desactivada_por_usuario")
                 self.notify("processing")
                 turn = self.interpret(transcript, dialogue, settings, now, owner)
             if self.changed.is_set():
@@ -535,8 +571,13 @@ class VoiceService:
         if not transcript.understood or (dialogue.verbal and transcript.confidence < 0.73):
             LOG.info("reconocimiento: orden descartada por baja confianza (%.2f)", transcript.confidence)
             return Turn(speech="No he entendido la orden.", accepted=False)
-        text = normalize_order(transcript.text)
+        text = self.adaptation.apply(normalize_order(transcript.text))
         intent = parse(text)
+        if intent and CATEGORIES.get(classify(intent), CATEGORIES["security"]).risk in {"alto", "crítico"}:
+            if transcript.confidence < 0.78 or any(word[3] < 0.55 for word in transcript.words):
+                self.trace("intención", "riesgo_con_confianza_insuficiente")
+                return Turn(speech="No oí con suficiente claridad la acción sensible. Repítela.", accepted=False)
+        self.trace("intención", classify(intent) if intent else "sin_orden_directa")
         if intent and intent[0] not in {"apps", "windows", "screens", "help"} and transcript.confidence < 0.66:
             return Turn(speech="La orden no se oyó con claridad. Repítela, por favor.", accepted=False)
         if self.on_cancel and clean(text) in STOP:

@@ -158,6 +158,6 @@ class UpdateDiscoveryTest(TestCase):
         self.assertLess(version_tuple("0.6.4.1"), version_tuple("v0.6.5"))
         asset = dict(name="JARVIS.exe", digest="sha256:" + "a" * 64, size=15)
         data = [{"tag_name": "v0.6.5", "prerelease": True}, {"tag_name": "oops"},
-                {"tag_name": "v0.6.4.2", "assets": [asset]}, {"tag_name": "v0.6.4.1", "assets": [asset]}]
+                {"tag_name": "v0.6.4.3", "assets": [asset]}, {"tag_name": "v0.6.4.2", "assets": [asset]}]
         with patch("updater.urlopen", return_value=BytesIO(json.dumps(data).encode())):
-            self.assertEqual(latest_update(), ("v0.6.4.2", "a" * 64, 15))
+            self.assertEqual(latest_update(), ("v0.6.4.3", "a" * 64, 15))
