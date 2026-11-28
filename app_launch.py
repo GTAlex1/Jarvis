@@ -17,6 +17,15 @@ class Running:
 
 def matches_identity(app, running):
     path = PureWindowsPath(running.executable)
+    appid = running.aumid.casefold()
+    webapps = [identity.value for identity in app.evidence if identity.kind == "webapp"]
+    if webapps:
+        ids = [identity.value.casefold() for identity in app.evidence if identity.kind == "aumid"]
+        if ids:
+            return bool(running.window and appid in ids)
+        return bool(running.window and any(
+            re.search(r"(?:^|[._])" + re.escape(webapp) + r"(?:$|[._ ])", appid) for webapp in webapps
+        ))
     name = path.name.casefold()
     if app.game:
         from game_providers import LAUNCHERS

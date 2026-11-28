@@ -199,8 +199,12 @@ class Dialogue:
     def options(self, reminder=""):
         _, result = self.pending
         count = len(result.options)
-        if count == 1 and result.kind == "aplicaciones":
+        if count == 1:
             label = result.options[0].label.strip()[:130]
+            source, _ = self.pending
+            action = (parse(source.command if isinstance(source, SelectedCommand) else source) or ("",))[0]
+            if action == "close":
+                return self.say(f"Encontré {label}. ¿Quieres cerrar esa ventana? Di sí o cancela.")
             return self.say(f"¿Te refieres a {label}? Di sí o repite el nombre.")
         choices = result.options[self.option_offset:self.option_offset + PAGE_SIZE[self.detail]]
         segments = []
@@ -218,7 +222,7 @@ class Dialogue:
         command, result = self.pending
         key = re.sub(r"^(?:me refiero a |elige |quiero )", "", key)
         key = re.sub(r"[ ,]+por favor$", "", key)
-        if len(result.options) == 1 and result.kind == "aplicaciones" and key in YES:
+        if len(result.options) == 1 and key in YES | {"si adelante", "si, adelante", "esa es", "ese es", "correcto", "yes"}:
             return SelectedCommand(command, result.options[0])
         value = re.sub(r"^(?:(?:la|el) |(?:opcion|numero) )+", "", key).strip()
         if value.isascii() and value.isdigit() and len(value) <= 4:

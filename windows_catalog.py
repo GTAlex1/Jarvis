@@ -5,7 +5,7 @@ from pathlib import Path, PureWindowsPath
 import re
 import subprocess
 
-from app_catalog import Application, Catalog, Identity, name_key
+from app_catalog import Application, Catalog, Discovery, Identity, collect_source, name_key
 
 CURRENT_VERSION = r"Software\Microsoft\Windows\CurrentVersion"
 BLOCKED_EXECUTABLE = re.compile(
@@ -42,7 +42,8 @@ $links = @(foreach ($root in $roots) {
         Where-Object { $_.Extension -in '.lnk','.url' } | Select-Object -First 3000)) {
         if ($entry.Extension -eq '.lnk') {
             try { $link = $wsh.CreateShortcut($entry.FullName) } catch { continue }
-            @{ Name=$entry.BaseName; Path=$entry.FullName; Target=$link.TargetPath; Arguments=$link.Arguments }
+            $id = $shell.NameSpace($entry.DirectoryName).ParseName($entry.Name).ExtendedProperty('System.AppUserModel.ID')
+            @{ Name=$entry.BaseName; Path=$entry.FullName; Target=$link.TargetPath; Arguments=$link.Arguments; Id=$id }
         } else { @{ Name=$entry.BaseName; Path=$entry.FullName } }
     }
 })
@@ -103,7 +104,10 @@ def inventory():
         result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-Command", INVENTORY],
                                 capture_output=True, encoding="utf-8-sig", check=True,
                                 timeout=35, creationflags=subprocess.CREATE_NO_WINDOW)
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        if not isinstance(data, dict):
+            raise ValueError("El inventario no es un objeto.")
+        return data
     except (subprocess.SubprocessError, OSError, ValueError) as error:
         raise OSError("No se pudo leer el catálogo de Windows.") from error
 
@@ -130,21 +134,30 @@ def path_identity(value):
     return (Identity("exe", path),) if path else ()
 
 
+def web_identity(value):
+    match = re.search(r"(?i)(?:^|[._=])(?:crx_)?([a-p]{32})(?=$|[. _\"])", value or "")
+    return (Identity("webapp", match[1].casefold()),) if match else ()
+
+
 def desktop_entries(snapshot):
     seen = set()
     for group in ("Shell", "Start", "Packages"):
         for item in snapshot.get(group, ()):
+            if not isinstance(item, dict):
+                continue
             appid = item.get("Id") or item.get("AppID")
             name = item.get("Name")
-            if not (appid and name and SHELL_ID.fullmatch(appid) and appid.casefold() not in seen):
+            if not (isinstance(appid, str) and isinstance(name, str) and name
+                    and SHELL_ID.fullmatch(appid) and appid.casefold() not in seen):
                 continue
             seen.add(appid.casefold())
-            evidence = (Identity("aumid", appid),)
+            web = web_identity(appid)
+            evidence = (Identity("aumid", appid), *web)
             target = item.get("Target") or appid
             if group == "Packages" and item.get("Location") and item.get("Exe"):
                 target = str(PureWindowsPath(item["Location"]) / item["Exe"])
             yield Application(name, "start", Identity("appsfolder", appid),
-                              (*evidence, *path_identity(target)), KNOWN_APP_ALIASES.get(name_key(name), ()))
+                              (*evidence, *(path_identity(target) if not web else ())), KNOWN_APP_ALIASES.get(name_key(name), ()))
 
 
 UNINSTALL_FIELDS = ("DisplayName", "DisplayIcon", "InstallLocation", "Publisher")
@@ -256,20 +269,26 @@ def catalog():
 def windows_inventory():
     from game_providers import GAME_STORES, LAUNCHERS, classify_shortcuts, game_app, game_entries
 
-    shell = inventory()
-    installed = tuple(uninstall_entries())
-    shortcuts = tuple(classify_shortcuts(shell.get("Links", ())))
-    games = tuple(game_entries(shell, installed, shortcuts))
+    failed = set()
+    (shell,) = collect_source("Windows", lambda: (inventory(),), failed, ("start", "shortcut")) or ({},)
+    installed = collect_source("registry", uninstall_entries, failed)
+    shortcuts = collect_source("shortcut", lambda: classify_shortcuts(shell.get("Links") or ()), failed)
+    games = game_entries(shell, installed, shortcuts, failed)
     game_names = {name_key(app.name) for app in games}
-    entries = [*games]
-    for app in (*desktop_entries(shell), *shortcuts, *registered_apps(installed),
-                *portable_apps(portable_folders())):
+    game_roots = {PureWindowsPath(identity.value) for app in games for identity in app.evidence
+                  if identity.kind == "game_root" and identity.value}
+    entries = list(games)
+    conventional = (
+        collect_source("start", lambda: desktop_entries(shell), failed),
+        shortcuts,
+        collect_source("registry", lambda: registered_apps(installed), failed),
+        collect_source("portable", lambda: portable_apps(portable_folders()), failed),
+    )
+    for app in (app for feed in conventional for app in feed):
         key = name_key(app.name)
         if app.game or key in game_names:
             continue
         if key in GAME_STORES and app.source == "start":
-            # The Windows entry can point at the generic launcher. Keep it as
-            # an activation request, but discard any launcher identity as proof.
             entries.append(game_app(app.name, GAME_STORES[key], app.route,
                                     note="Si aparece el cliente, selecciona Jugar en el juego solicitado."))
             game_names.add(key)
@@ -280,9 +299,9 @@ def windows_inventory():
         ):
             continue
         if app.source in {"portable", "registry"} and any(
-            any(root in PureWindowsPath(identity.value).parents for root in game_roots)
+            game_roots.intersection(PureWindowsPath(identity.value).parents)
             for identity in app.evidence if identity.kind == "exe"
         ):
             continue
         entries.append(app)
-    return entries
+    return Discovery(tuple(entries), frozenset(failed))

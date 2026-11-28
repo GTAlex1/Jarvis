@@ -10,7 +10,7 @@ from commands import HELP, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
 from app_catalog import Application, Identity, labels, name_key, resolve
 from app_launch import launch_verified, matches_identity
-from windows_catalog import catalog, start_application, valid_route
+from windows_catalog import catalog, start_application, valid_route, web_identity
 from windows_instances import WindowsInstances
 from permissions import ALLOW, BLOCK, classify
 from voice_authorization import ExitAction, LocalApproval, PowerAction, RejectedAction
@@ -86,16 +86,43 @@ SOURCE_LABELS = {"steam": "Steam", "epic": "Epic Games", "riot": "Riot Client",
                  "portable": "Portable"}
 
 
+LAUNCHER_NAMES = {"epicgameslauncher": "Epic Games", "riotclientservices": "Riot Client",
+                  "riotclientux": "Riot Client", "hoyoplay": "HoYoPlay", "eadesktop": "EA App",
+                  "ubisoftconnect": "Ubisoft Connect", "galaxyclient": "GOG Galaxy",
+                  "minecraftlauncher": "Minecraft Launcher", "battle.net": "Battle.net"}
+KNOWN_GAMES = {"rocketleague": "Rocket League", "genshinimpact": "Genshin Impact",
+               "starrail": "Honkai: Star Rail", "valorant-win64-shipping": "VALORANT"}
+TECHNICAL_SUFFIX = re.compile(
+    r"\s*[([][^()\[\]]*(?:32-bit|64-bit|dx\d+|cooked|vulkan|shipping|build\s+\d|opengl)[^()\[\]]*[)\]]$", re.I)
+LAUNCHER_TITLE = re.compile(r"^(?:(?:iniciador|lanzador|cliente) de (?:los )?)| (?:launcher|iniciador|lanzador)$", re.I)
+
+
+def commercial_title(value):
+    return LAUNCHER_TITLE.sub("", TECHNICAL_SUFFIX.sub("", value)).strip() or value
+
+
+def canonical_windows_name(caption, executable, installed=()):
+    stem = PureWindowsPath(executable).stem.casefold() if executable.lower().endswith(".exe") else executable.casefold()
+    if stem in LAUNCHER_NAMES:
+        return LAUNCHER_NAMES[stem]
+    names = tuple(dict.fromkeys(commercial_title(app.name) for app in installed))
+    if len(names) == 1:
+        return names[0]
+    if stem in KNOWN_GAMES:
+        return KNOWN_GAMES[stem]
+    return APP_NAMES.get(stem, (commercial_title(caption),))[0]
+
+
 def app_names(application):
     known = tuple(alias for key, group in APP_NAMES.items()
                   if normalize(application.name) in {normalize(item) for item in (key, *group)}
                   for alias in (key, *group))
-    return (*labels(application), *known,
+    return (*labels(application), commercial_title(application.name), *known,
             f"{application.name} {SOURCE_LABELS.get(application.source, application.source)}")
 
 
 def app_option(application):
-    return TargetOption(application.name, (application.name, application.route.kind,
+    return TargetOption(commercial_title(application.name), (application.name, application.route.kind,
                                            application.route.value, application.source))
 
 def half(bounds, side):
@@ -213,12 +240,15 @@ class Desktop:
 
         if not self.api.EnumWindows(collect, 0):
             raise c.WinError(c.get_last_error())
-        self.window_owners = owners
+        return windows, owners
+
+    def windows(self):
+        windows, self.window_owners = self.snapshot_windows()
         return windows
 
     def running(self):
-        self.windows()
-        owners = tuple(self.window_owners.values())
+        _, window_owners = self.snapshot_windows()
+        owners = tuple(window_owners.values())
         visible = {owner.pid for owner in owners}
         return (*owners, *(item for item in self.instances.all() if item.pid not in visible))
 
@@ -294,28 +324,50 @@ class Desktop:
         if approximate or len({normalize(window[2]) for window in matches}) != 1:
             matches = (self.select_window(title, selection, voice),)
         results = []
-        for handle, name, _ in matches:
+        for window in matches:
+            handle = window[0]
+            name = self.window_label(window)
             if not self.api.IsIconic(handle):
                 self.api.ShowWindow(handle, 6)
             results.append(f"Minimicé «{name}»." if self.api.IsIconic(handle) else f"No pude minimizar «{name}».")
         return "\n".join(results)
 
-    def window_option(self, window):
+    def window_apps(self, window, entries):
+        owner = getattr(self, "window_owners", {}).get(window[0])
+        if owner is None:
+            return ()
+        matches = tuple(app for app in entries if matches_identity(app, owner))
+        return (tuple(app for app in matches if any(i.kind == "webapp" for i in app.evidence))
+                if web_identity(owner.aumid) else matches)
+
+    def window_label(self, window, installed=None):
+        if installed is None:
+            index = getattr(self, "index", None)
+            installed = self.window_apps(window, index.snapshot() if index else ())
+        return canonical_windows_name(window[1], window[2], installed)
+
+    def window_option(self, window, distinguish=False):
         owner = getattr(self, "window_owners", {}).get(window[0])
         token = (owner.pid, owner.started) if owner else ()
-        return TargetOption(window[1], (*window, *token))
+        label = self.window_label(window)
+        if distinguish and name_key(label) != name_key(window[1]):
+            label = f"{label} · {window[1]}"
+        return TargetOption(label, (*window, *token))
 
     def window_matches(self, title):
         windows = self.windows()
-        owners = getattr(self, "window_owners", {})
-        entries = self.index.snapshot() if getattr(self, "index", None) is not None else ()
+        index = getattr(self, "index", None)
+        entries = index.snapshot() if index else ()
+
         def names(window):
-            handle, caption, exe = window
-            owner = owners.get(handle)
-            installed = (alias for app in entries if owner and matches_identity(app, owner)
-                         for alias in app_names(app))
+            _, caption, exe = window
+            installed = self.window_apps(window, entries)
+            aliases = (alias for app in installed for alias in app_names(app))
             segments = tuple(re.split(r" (?:[-–—|·]) ", caption))
-            return (caption, exe, *APP_NAMES.get(normalize(exe), ()), *segments, *installed)
+            label = self.window_label(window, installed)
+            owner = getattr(self, "window_owners", {}).get(window[0])
+            executable = () if owner and web_identity(owner.aumid) else (exe, *APP_NAMES.get(normalize(exe), ()))
+            return (label, caption, *executable, *segments, *aliases)
         return resolve(title, windows, names)
 
     def select_window(self, title, selection=None, voice=False):
@@ -331,15 +383,19 @@ class Desktop:
         if not matches:
             raise ValueError(f"No encontré una ventana de «{title}». Puedes usar «abre {title}».")
         if len(matches) > 1 or approximate:
-            names = "\n".join(f"  {name}" for _, name, _ in matches)
+            labels = [self.window_label(window) for window in matches]
+            options = [self.window_option(window, labels.count(label) > 1)
+                       for window, label in zip(matches, labels)]
+            names = "\n".join(f"{i}. {option.label}" for i, option in enumerate(options, 1))
             heading = "Hay varias ventanas" if len(matches) > 1 else "Encontré una ventana parecida"
             raise AmbiguousTarget(f"{heading}. Comprueba el destino:\n{names}",
-                                  "ventanas", map(self.window_option, matches))
+                                  "ventanas", options)
         return matches[0]
 
     def window_action(self, action, title, selection=None, voice=False):
         handle, name, _ = (self.select_window(title, selection, voice) if selection or voice
                            else self.select_window(title))
+        name = self.window_label((handle, name, _))
         if action == "close":
             if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
                 raise c.WinError(c.get_last_error())
@@ -369,6 +425,7 @@ class Desktop:
             return "No encontré esa pantalla. Escribe «pantallas» para ver las disponibles."
         handle, name, _ = (self.select_window(title, selection, voice) if selection or voice
                            else self.select_window(title))
+        name = self.window_label((handle, name, _))
         was_maximized = self.api.IsZoomed(handle)
         if was_maximized or self.api.IsIconic(handle):
             self.api.ShowWindow(handle, 1)  # Restore to normal size before positioning
@@ -452,7 +509,7 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
                 if action == "close":
                     window = desktop.select_window(args[0], selection, voice=True)
                     chosen = SelectedCommand(command, desktop.window_option(window))
-                    return LocalApproval(chosen, f"Cerrar la ventana «{window[1]}»", method, category)
+                    return LocalApproval(chosen, f"Cerrar la ventana «{chosen.option.label}»", method, category)
                 chosen = SelectedCommand(command, TargetOption(selection[0], selection)) if selection else command
                 label = "Salir de JARVIS" if action == "exit" else command.capitalize()
                 return LocalApproval(chosen, label, method, category)
@@ -467,8 +524,8 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
             ) or "No encontré pantallas."
         if action == "windows":
             return "\n".join(
-                f"{app_label(executable)} · {title}" if executable else title
-                for _, title, executable in desktop.windows()
+                label if label == window[1] else f"{label} · {window[1]}"
+                for window in desktop.windows() for label in (desktop.window_label(window),)
             ) or "No encontré ventanas."
         if action == "apps":
             return "\n".join(

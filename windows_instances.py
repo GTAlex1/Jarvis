@@ -4,11 +4,13 @@ from ctypes import wintypes as w
 
 from app_launch import Running
 from windows_tray import bind
+from windows_appid import WindowAppId
 
 
 class WindowsInstances:
     def __init__(self, user, kernel):
         self.user, self.kernel = user, kernel
+        self.window_aumid = WindowAppId()
         self.aumid = bind(kernel, "GetApplicationUserModelId",
                           [w.HANDLE, c.POINTER(w.UINT), w.LPWSTR], w.LONG)
         self.times = bind(kernel, "GetProcessTimes", [w.HANDLE, *([c.POINTER(w.FILETIME)] * 4)], w.BOOL)
@@ -59,7 +61,7 @@ class WindowsInstances:
             self.children(handle, collect, 0)
             if found:
                 owner = found[0]
-        return Running(owner.pid, owner.executable, owner.aumid, handle, owner.started)
+        return Running(owner.pid, owner.executable, self.window_aumid(handle) or owner.aumid, handle, owner.started)
 
     def all(self):
         size = 512

@@ -2,15 +2,14 @@
 import configparser
 from dataclasses import replace
 import json
-import logging
 import os
 from pathlib import Path, PureWindowsPath
 import re
 from urllib.parse import quote
 
-from app_catalog import Application, Identity, name_key
+from app_catalog import Application, Identity, collect_source, name_key
 from windows_catalog import (LOCAL_FILE, exe_path, existing_exe, path_identity, registry_rows,
-                             icon_executable)
+                             icon_executable, web_identity)
 
 URI_PROVIDERS = {
     "steam": r"steam://(?:rungameid|run)/[1-9]\d{0,19}/?",
@@ -108,8 +107,10 @@ def game_app(name, source, route, root="", executable="", backing="", note=""):
 
 def classify_shortcuts(rows):
     for item in rows:
+        if not isinstance(item, dict):
+            continue
         name, path = item.get("Name"), win_path(item.get("Path"))
-        if not name or not path:
+        if not isinstance(name, str) or not name or not path:
             continue
         suffix = PureWindowsPath(path).suffix.casefold()
         if suffix == ".url":
@@ -122,6 +123,16 @@ def classify_shortcuts(rows):
         launcher = LAUNCHERS.get(PureWindowsPath(target).stem.casefold())
         args = item.get("Arguments") or ""
         key = name_key(name)
+        appid = item.get("Id")
+        web = web_identity(appid) if isinstance(appid, str) else ()
+        if not web:
+            match = re.search(r'(?:^|\s)--app-id[=\s]+"?([a-p]{32})(?=["\s]|$)', args, re.I)
+            if match:
+                web = (Identity("webapp", match[1].casefold()),)
+        if web:
+            evidence = (*((Identity("aumid", appid),) if appid else ()), *web)
+            yield Application(name, "shortcut", Identity("shortcut", path), evidence)
+            continue
         if launcher and (key in GAME_STORES or (args and re.search(
                 r"(?:--launch-product=|--game(?:[= ]|biz)|--exec(?:[= ])|--launch-game|"
                 r"/gameId=|/launchGame=|(?:^| )-launch(?:[= ]))", args, re.I))):
@@ -287,15 +298,20 @@ def ubisoft_games():
         }),))
 
 
-def game_entries(shell, installed, shortcuts):
-    program_data = Path(os.environ.get("PROGRAMDATA") or Path.home())
+def discover_steam():
     steam_roots = {Path(root) for name, row in registry_rows(r"Software\Valve", ("SteamPath", "InstallPath"))
                    if name.casefold() == "steam" and (root := win_path(row.get("SteamPath") or row.get("InstallPath")))}
     for var in ("ProgramFiles", "ProgramFiles(x86)"):
         if root := os.environ.get(var):
             steam_roots.add(Path(root) / "Steam")
+    return steam_games(steam_roots)
+
+
+def game_entries(shell, installed, shortcuts, failed=None):
+    failed = set() if failed is None else failed
+    program_data = Path(os.environ.get("PROGRAMDATA") or Path.home())
     metadata = (
-        ("steam", lambda: steam_games(steam_roots)),
+        ("steam", discover_steam),
         ("epic", lambda: epic_games(program_data / "Epic/EpicGamesLauncher/Data/Manifests")),
         ("riot", lambda: riot_games(program_data, installed)),
         ("hoyoplay", lambda: publisher_games(installed, "hoyoplay", r"hoyoverse|mihoyo|cognosphere", r"^hoyoplay|launcher")),
@@ -308,10 +324,7 @@ def game_entries(shell, installed, shortcuts):
     )
     games = [app for app in shortcuts if app.game]
     for provider, discover in metadata:
-        try:
-            games.extend(discover())
-        except (OSError, ValueError):
-            logging.getLogger(__name__).warning("No se pudo leer el proveedor %s", provider)
+        games.extend(collect_source(provider, discover, failed))
     # Combine records of a product within the same store, preserving distinct
     # installations and storefronts. Prefer generated links over manual fallbacks.
     games.sort(key=lambda app: (app.route.kind == "unavailable",

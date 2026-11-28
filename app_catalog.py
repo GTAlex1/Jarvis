@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import json
+import logging
 from pathlib import Path, PureWindowsPath
 import re
 from threading import Lock
@@ -69,11 +70,17 @@ def consolidate(applications):
     result = []
     routes = {}
     executable_indices = {}
+    appids = {}
     sources = {"steam": 0, "epic": 0, "riot": 0, "hoyoplay": 0, "xbox": 0, "ea": 0,
                "ubisoft": 0, "battlenet": 0, "gog": 0, "start": 1, "shortcut": 2,
                "registry": 3, "portable": 4}
     for app in sorted(applications, key=lambda app: sources.get(app.source, 2)):
         index = routes.get(app.key)
+        if index is None and not app.game:
+            for identity in app.evidence:
+                if identity.kind == "aumid" and identity.value.casefold() in appids:
+                    index = appids[identity.value.casefold()]
+                    break
         if index is None and not app.game and app.route.kind != "appsfolder":
             keys = {i.value.casefold() for i in app.evidence if i.kind == "exe"}
             for key in keys:
@@ -99,9 +106,27 @@ def consolidate(applications):
         routes[app.key] = index
         if not app.game:
             for identity in app.evidence:
+                if identity.kind == "aumid":
+                    appids[identity.value.casefold()] = index
                 if identity.kind == "exe":
                     executable_indices.setdefault(identity.value.casefold(), set()).add(index)
     return tuple(sorted(result, key=lambda app: (name_key(app.name), app.key)))
+
+
+@dataclass(frozen=True)
+class Discovery:
+    entries: tuple
+    failed: frozenset = frozenset()
+
+
+def collect_source(name, collect, failed, affected=()):
+    """Keep a broken provider from hiding all the other applications."""
+    try:
+        return tuple(collect())
+    except Exception:
+        failed.update(affected or (name,))
+        logging.getLogger(__name__).exception("Falló la fuente del catálogo %s", name)
+        return ()
 
 
 class Catalog:
@@ -153,9 +178,15 @@ class Catalog:
             failures = set()
             for name, provider in self.providers:
                 try:
-                    discovered.extend(provider())
-                except (OSError, ValueError):
+                    result = provider()
+                    if isinstance(result, Discovery):
+                        failures.update(result.failed)
+                        discovered.extend(result.entries)
+                    else:
+                        discovered.extend(tuple(result))
+                except Exception:
                     failures.add(name)
+                    logging.getLogger(__name__).exception("Falló el catálogo %s", name)
             with self.lock:
                 preserved = [app for app in self.entries if ("windows" in failures or app.source in failures) and self.valid(app)]
                 self.entries = consolidate((*discovered, *preserved))
