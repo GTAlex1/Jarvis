@@ -54,6 +54,7 @@ class Resident:
         self.hidden_notice = False
         self.running_commands = 0
         self.language_busy = False
+        self.english_requested = False
         self.last_correction = None
         self.update_status = f"Versión {VERSION}"
         self.packaged = getattr(sys, "frozen", False)
@@ -196,9 +197,11 @@ class Resident:
         )
 
     def use_spanish(self):
+        self.english_requested = False
         self.save_voice(replace(self.voice_options, language="es"))
 
     def use_english(self):
+        self.english_requested = True
         if self.language_busy:
             return
         if english_voice.installed():
@@ -224,7 +227,7 @@ class Resident:
         if error:
             self.show()
             messagebox.showerror("JARVIS", error, parent=self.root)
-        else:
+        elif self.english_requested:
             self.save_voice(replace(self.voice_options, language="en"))
             self.record_voice("El reconocimiento en inglés está preparado.", "reply")
 

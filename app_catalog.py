@@ -67,7 +67,7 @@ def resolve(query, items, names):
         if score >= (0.64 if contextual else 0.70):
             ranked.append((score, item))
     ranked.sort(key=lambda entry: -entry[0])
-    return tuple(item for score, item in ranked[:5] if score >= ranked[0][0] - 0.13), bool(ranked)
+    return tuple(item for score, item in ranked[:5] if score >= ranked[0][0] - (0.17 if contextual else 0.13)), bool(ranked)
 
 
 def consolidate(applications):

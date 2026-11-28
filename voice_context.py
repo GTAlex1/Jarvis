@@ -26,6 +26,10 @@ class ContextTitle(ContextOrder):
 def contextual_score(query, label):
     q, label = simplify(query), simplify(label)
     base = phonetic_score(q, label)
+    spoken, full = q.split(), label.split()
+    if 1 < len(spoken) < len(full) and spoken[0] == full[0]:
+        shortened = " ".join(full[:len(spoken)])
+        base = max(base, phonetic_score(q, shortened) - 0.04)
     if min(len(q), len(label)) < 5:
         return base
     a, b = phonetic_key(q), phonetic_key(label)

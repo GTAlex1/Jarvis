@@ -226,7 +226,7 @@ def valid_route(app):
     if app.backing and not local_exists(app.backing):
         return False
     roots = tuple(identity.value for identity in app.evidence if identity.kind == "game_root")
-    if roots and not any(local_exists(root, directory=True) for root in roots):
+    if roots and route.kind in {"uri", "unavailable"} and not any(local_exists(root, directory=True) for root in roots):
         return False
     if route.kind == "unavailable":
         return bool(roots)
