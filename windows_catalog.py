@@ -1,11 +1,9 @@
 """Discover Windows applications without using input as a shell command."""
-import ctypes
 import json
 import os
 from pathlib import Path, PureWindowsPath
 import re
 import subprocess
-import sys
 
 from app_catalog import Application, Catalog, Identity, name_key
 
@@ -113,7 +111,8 @@ def inventory():
 def exe_path(value):
     value = os.path.expandvars(str(value or "").strip().strip('"'))
     path = PureWindowsPath(value)
-    if LOCAL_FILE.fullmatch(value) and path.suffix.casefold() == ".exe" and not BLOCKED_EXECUTABLE.match(path.name):
+    if (LOCAL_FILE.fullmatch(value) and ".." not in path.parts and path.suffix.casefold() == ".exe"
+            and not BLOCKED_EXECUTABLE.match(path.name)):
         return str(path)
     return ""
 
@@ -168,13 +167,9 @@ def registered_apps(uninstall):
 
 
 def portable_folders():
-    from preferences import SETTINGS_KEY, read_value
+    from preferences import application_folders
 
-    try:
-        raw = json.loads(read_value(SETTINGS_KEY, "ApplicationFolders", "[]"))
-    except (OSError, TypeError, ValueError):
-        raw = ()
-    folders = raw if isinstance(raw, list) else []
+    folders = application_folders()
     home = Path.home()
     return tuple(dict.fromkeys((str(home / "PortableApps"), str(home / "Games"), *(
         folder for folder in folders[:24] if isinstance(folder, str) and LOCAL_FILE.fullmatch(folder)
@@ -185,7 +180,7 @@ def portable_apps(folders):
     remaining = 1200
     for folder in folders:
         base = Path(folder)
-        if not base.is_dir() or base.is_symlink() or base.is_junction():
+        if not base.is_dir() or base == Path(base.anchor) or base.is_symlink() or base.is_junction():
             continue
         for root, dirs, files in os.walk(base, followlinks=False):
             parent = Path(root)
@@ -213,7 +208,7 @@ def valid_route(app):
                 and PureWindowsPath(route.value).suffix.casefold() == ".lnk"
                 and Path(route.value).is_file())
     if route.kind == "appsfolder":
-        return bool(SHELL_ID.fullmatch(route.value) and not route.value.startswith(("shell:", "::")))
+        return bool(SHELL_ID.fullmatch(route.value) and not route.value.casefold().startswith(("shell:", "::")))
     if route.kind == "uri":
         return provider_uri(route.value) == app.source
     return False
@@ -251,6 +246,12 @@ def windows_inventory():
     entries = [*games]
     for app in (*desktop_entries(shell), *shortcuts, *registered_apps(installed),
                 *portable_apps(portable_folders())):
-        if not app.game and name_key(app.name) not in game_names:
-            entries.append(app)
+        if app.game or name_key(app.name) in game_names:
+            continue
+        if app.source in {"portable", "registry"} and any(
+            any(root in PureWindowsPath(identity.value).parents for root in game_roots)
+            for identity in app.evidence if identity.kind == "exe"
+        ):
+            continue
+        entries.append(app)
     return entries

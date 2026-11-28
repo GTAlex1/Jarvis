@@ -42,6 +42,7 @@ ADMIN_NAMES = {
     "bluetooth", "panel de control", "control panel", "terminal", "windows terminal",
     "powershell", "windows powershell", "simbolo del sistema", "command prompt", "regedit",
     "editor del registro", "administracion de equipos", "computer management",
+    "taskmgr", "systemsettings", "wt", "windowsterminal", "cmd", "pwsh", "control", "mmc",
 }
 LOCAL = {BUTTON, HOTKEY, CODE, BLOCK}
 PRESETS = {
@@ -104,7 +105,7 @@ def classify(intent, selected_label=""):
         if effect in {"shutdown", "restart"}:
             return "power"
         return "window" if effect in {"desktop", "task_view", "minimize_all", "restore_all"} else "unknown"
-    if action in {"apps", "windows", "screens", "help"}:
+    if action in {"apps", "refresh_apps", "windows", "screens", "help"}:
         return "query"
     if action in {"close", "exit"}:
         return "close"

@@ -24,9 +24,14 @@ POSITIONS = {
     "izquierda abajo": "bottom_left", "abajo derecha": "bottom_right",
     "inferior derecha": "bottom_right", "derecha abajo": "bottom_right",
     "centro": "center", "centrado": "center",
+    "full screen": "full", "left": "left", "right": "right", "top left": "top_left",
+    "top right": "top_right", "bottom left": "bottom_left", "bottom right": "bottom_right",
     "pantalla completa": "full", "maximizado": "full", "maximizada": "full",
 }
 POSITION_PATTERN = "|".join(re.escape(name) for name in sorted(POSITIONS, key=len, reverse=True))
+ORDINAL_SCREENS = {"primera": 1, "primer": 1, "segunda": 2, "segundo": 2,
+                   "tercera": 3, "tercer": 3, "cuarta": 4, "cuarto": 4}
+ORDINAL_SCREEN = re.compile(r" (primera|primer|segunda|segundo|tercera|tercer|cuarta|cuarto) (pantalla|monitor)$")
 SCREEN = re.compile(r" (?:(?:a|en|de) (?:la |el )?|al |del )?(?:pantalla|monitor) (\d+|principal)$")
 ACTIONS = {
     "abre": "open", "abrir": "open", "inicia": "open",
@@ -34,6 +39,8 @@ ACTIONS = {
     "minimiza": "minimize", "minimizar": "minimize",
     "restaura": "restore", "restaurar": "restore",
     "enfoca": "focus", "enfocar": "focus", "activa": "focus",
+    "open": "open", "launch": "open", "close": "close", "minimize": "minimize",
+    "maximize": "maximize", "restore": "restore", "focus": "focus",
     "maximiza": "maximize", "maximizar": "maximize",
     "centra": "center", "centrar": "center",
 }
@@ -63,6 +70,7 @@ SPOKEN_SCREEN = re.compile(r" (?:pantalla|monitor) (" + "|".join(SPOKEN_NUMBERS)
 LIST_COMMANDS = {
     "ventanas": "windows", "lista ventanas": "windows",
     "aplicaciones": "apps", "programas": "apps", "lista aplicaciones": "apps",
+    "actualiza aplicaciones": "refresh_apps", "actualizar catalogo": "refresh_apps",
     "pantallas": "screens", "monitores": "screens", "lista pantallas": "screens",
     "ayuda": "help", "ayudame": "help", "dime como puedes ayudarme": "help",
     "que puedes hacer": "help", "comandos": "help", "salir": "exit",
@@ -70,7 +78,7 @@ LIST_COMMANDS = {
 
 
 def target_name(value):
-    return re.sub(r"^(?:(?:el|la) )?(?:(?:ventana|pestana)(?: de)? )?(?:el |la )?", "", value).strip()
+    return re.sub(r"^(?:(?:el|la|the) )?(?:(?:ventana|pestana)(?: de)? )?(?:el |la )?", "", value).strip()
 
 
 def parse(command):
@@ -79,6 +87,8 @@ def parse(command):
         return (LIST_COMMANDS[value],)
     if value in SYSTEM_COMMANDS:
         return "system", SYSTEM_COMMANDS[value]
+    if match := ORDINAL_SCREEN.search(value):
+        value = value[:match.start()] + f" {match[2]} {ORDINAL_SCREENS[match[1]]}"
     if match := SPOKEN_SCREEN.search(value):
         value = value[:match.start(1)] + str(SPOKEN_NUMBERS.index(match[1]) + 1)
     screen = None
@@ -99,7 +109,8 @@ def parse(command):
             return None
         return action, title
 
-    value = re.sub(r"^(?:mueve|mover|pon|poner|coloca|colocar) ", "", value)
+    value = re.sub(r"^(?:mueve|mover|pon|poner|coloca|colocar|move|put) ", "", value)
+    value = re.sub(r" (?:to|on) (?:the )?(?=left$|right$|top |bottom |full screen$)", " ", value)
     match = re.fullmatch(
         rf"(.+?) (?:(?:a|en) (?:la |el )?|al )?(?:(?:la |el )?(?:mitad|esquina|parte) )?({POSITION_PATTERN})",
         value,
@@ -157,7 +168,7 @@ sube volumen · baja volumen · silencia o activa el sonido
 reproducir o pausar · siguiente canción · anterior canción
 
 CONSULTAS
-ventanas · aplicaciones · pantallas · ayuda · salir
+ventanas · aplicaciones · actualiza aplicaciones · pantallas · ayuda · salir
 
 Si hay varias ventanas, usa un título más específico.
 Cerrar solicita el cierre normal y permite que la aplicación pregunte si quieres guardar.

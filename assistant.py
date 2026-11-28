@@ -13,7 +13,7 @@ class Assistant:
         self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jarvis-command")
 
     def submit(self, command):
-        return self.worker.submit(self.execute, command)
+        return self.worker.submit(self.execute, command, conversational=True)
 
     def submit_voice(self, command, approved=False, guard=None, policy=None):
         return self.worker.submit(self.execute, command, conversational=True, guard=guard,
@@ -34,3 +34,4 @@ class Assistant:
 
     def close(self):
         self.worker.shutdown(cancel_futures=True)
+        self.desktop.close()

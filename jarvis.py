@@ -1,7 +1,6 @@
 import ctypes as c
 from ctypes import wintypes as w
 from pathlib import PureWindowsPath
-import json
 import os
 import re
 import subprocess
@@ -9,7 +8,10 @@ import sys
 import unicodedata
 from commands import HELP, clean, parse, rectangle
 from dialogue import Clarification, SelectedCommand, TargetOption
-from command_language import rank_targets
+from app_catalog import Application, Identity, labels, name_key, resolve
+from app_launch import launch_verified, matches_identity
+from windows_catalog import catalog, start_application, valid_route
+from windows_instances import WindowsInstances
 from permissions import ALLOW, BLOCK, classify
 from voice_authorization import ExitAction, LocalApproval, PowerAction, RejectedAction
 
@@ -63,18 +65,38 @@ def matching_windows(windows, query, exact_only=False):
     return [window for window in windows if query in normalize(window[1])]
 
 
-def launch_matches(apps, query, exact_only=False):
-    names = {query}
-    for executable, aliases in APP_NAMES.items():
-        group = {normalize(alias) for alias in (executable, *aliases)}
-        if query in group:
-            names = group
-            break
-    exact = list({app[1].casefold(): app for app in apps if normalize(app[0]) in names}.values())
-    if exact or exact_only:
-        return exact
-    return list({app[1].casefold(): app for app in apps if query in normalize(app[0])}.values())
+SYSTEM_LOCATIONS = {
+    "configuracion": "ms-settings:", "ajustes": "ms-settings:",
+    "configuracion de pantalla": "ms-settings:display",
+    "configuracion de sonido": "ms-settings:sound",
+    "wifi": "ms-settings:network-wifi", "bluetooth": "ms-settings:bluetooth",
+    "windows update": "ms-settings:windowsupdate",
+    "descargas": "shell:Downloads", "documentos": "shell:Personal",
+    "imagenes": "shell:My Pictures", "papelera": "shell:RecycleBinFolder",
+}
+SYSTEM_EXECUTABLES = {
+    "explorador": "explorer.exe", "explorador de archivos": "explorer.exe",
+    "administrador de tareas": "System32/Taskmgr.exe",
+    "bloc de notas": "System32/notepad.exe", "calculadora": "System32/calc.exe",
+}
+SOURCE_LABELS = {"steam": "Steam", "epic": "Epic Games", "riot": "Riot Client",
+                 "hoyoplay": "HoYoPlay", "xbox": "Xbox", "ea": "EA App",
+                 "ubisoft": "Ubisoft Connect", "battlenet": "Battle.net", "gog": "GOG Galaxy",
+                 "start": "Windows", "shortcut": "Acceso directo", "registry": "Registro",
+                 "portable": "Portable"}
 
+
+def app_names(application):
+    known = tuple(alias for key, group in APP_NAMES.items()
+                  if normalize(application.name) in {normalize(item) for item in (key, *group)}
+                  for alias in (key, *group))
+    return (*labels(application), *known,
+            f"{application.name} {SOURCE_LABELS.get(application.source, application.source)}")
+
+
+def app_option(application):
+    return TargetOption(application.name, (application.name, application.route.kind,
+                                           application.route.value, application.source))
 
 def half(bounds, side):
     x, y, right, bottom = bounds
@@ -140,6 +162,13 @@ class Desktop:
             function.argtypes = args
             function.restype = result
         self.api.SetProcessDpiAwarenessContext(c.c_void_p(-4))
+        self.instances = WindowsInstances(self.api, self.kernel)
+        self.index = catalog()
+        self.window_owners = {}
+        self.index.refresh()
+
+    def close(self):
+        self.index.close()
 
     def screens(self):
         screens = {}
@@ -161,143 +190,148 @@ class Desktop:
             raise c.WinError(c.get_last_error())
         return screens
 
-    def executable(self, pid):
-        process = self.kernel.OpenProcess(0x1000, False, pid)
-        if not process:
-            return ""
-        try:
-            path = c.create_unicode_buffer(32768)
-            size = w.DWORD(len(path))
-            if self.kernel.QueryFullProcessImageNameW(process, 0, path, c.byref(size)):
-                return PureWindowsPath(path.value).stem
-            return ""
-        finally:
-            self.kernel.CloseHandle(process)
-
     def windows(self):
         windows = []
-        executables = {}
+        owners = {}
+        processes = {}
         shell_window = self.api.GetShellWindow()
+
+        def read(pid):
+            if pid not in processes:
+                processes[pid] = self.instances.read(pid)
+            return processes[pid]
 
         @self.window_callback
         def collect(handle, _data):
             if handle != shell_window and self.api.IsWindowVisible(handle):
                 title = c.create_unicode_buffer(self.api.GetWindowTextLengthW(handle) + 1)
                 if self.api.GetWindowTextW(handle, title, len(title)):
-                    pid = w.DWORD()
-                    self.api.GetWindowThreadProcessId(handle, c.byref(pid))
-                    if pid.value not in executables:
-                        executables[pid.value] = self.executable(pid.value)
-                    windows.append((handle, title.value, executables[pid.value]))
+                    owner = self.instances.window(handle, read)
+                    owners[handle] = owner
+                    windows.append((handle, title.value, PureWindowsPath(owner.executable).stem))
             return True
 
         if not self.api.EnumWindows(collect, 0):
             raise c.WinError(c.get_last_error())
+        self.window_owners = owners
         return windows
 
+    def running(self):
+        self.windows()
+        owners = tuple(self.window_owners.values())
+        visible = {owner.pid for owner in owners}
+        return (*owners, *(item for item in self.instances.all() if item.pid not in visible))
+
     def applications(self):
-        script = """
-        $ErrorActionPreference = 'Stop'
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        ConvertTo-Json -InputObject @(Get-StartApps | Select-Object Name, AppID) -Compress
-        """
-        powershell = os.path.join(os.environ["SystemRoot"], "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-        try:
-            result = subprocess.run(
-                [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True, encoding="utf-8-sig", timeout=12,
-                creationflags=subprocess.CREATE_NO_WINDOW, check=True,
-            )
-            return sorted({
-                (app["Name"], app["AppID"]) for app in json.loads(result.stdout)
-                if app.get("Name") and app.get("AppID")
-            }, key=lambda app: normalize(app[0]))
-        except (subprocess.SubprocessError, ValueError) as error:
-            raise OSError("Windows no pudo consultar las aplicaciones del menú Inicio.") from error
+        cached = self.index.snapshot(wait=True)
+        available = tuple(app for app in cached if app.route.kind == "unavailable" or valid_route(app))
+        if len(available) < len(cached):
+            self.index.refresh(force=True)
+        return available
+
+    def refresh_applications(self):
+        self.index.refresh(force=True)
+        return "Estoy actualizando el catálogo de aplicaciones en segundo plano."
 
     def open_app(self, title, selection=None, voice=False):
-        builtins = {
-            "configuracion": "ms-settings:", "ajustes": "ms-settings:",
-            "configuracion de pantalla": "ms-settings:display",
-            "configuracion de sonido": "ms-settings:sound",
-            "wifi": "ms-settings:network-wifi", "bluetooth": "ms-settings:bluetooth",
-            "windows update": "ms-settings:windowsupdate",
-            "descargas": "shell:Downloads", "documentos": "shell:Personal",
-            "imagenes": "shell:My Pictures", "papelera": "shell:RecycleBinFolder",
-        }
-        executables = {
-            "explorador": "explorer.exe", "explorador de archivos": "explorer.exe",
-            "administrador de tareas": "System32/Taskmgr.exe",
-            "bloc de notas": "System32/notepad.exe",
-            "calculadora": "System32/calc.exe",
-        }
-        if title in builtins:
-            os.startfile(builtins[title])
+        if selection is None and title in SYSTEM_LOCATIONS:
+            os.startfile(SYSTEM_LOCATIONS[title])
             return f"Solicité abrir «{title}»."
-        if title in executables:
-            os.startfile(os.path.join(os.environ["SystemRoot"], executables[title]))
-            return f"Solicité abrir «{title}»."
+        if selection is None and title in SYSTEM_EXECUTABLES:
+            application = self.system_application(title)
+            return launch_verified(application, self.running, start_application).message
+        application = self.choose_application(title, selection)
+        if application is None:
+            if getattr(self, "index", None) is not None:
+                windows = self.window_matches(title)
+                if len(windows[0]) == 1 and not windows[1]:
+                    return self.window_action("focus", title, self.window_option(windows[0][0]).target)
+            raise ValueError(f"No encontré «{title}» en el catálogo. Consulta «aplicaciones» o «ventanas».")
+        if not isinstance(application, Application):
+            # Embedded users of Desktop.applications from the original API can supply Start tuples.
+            os.startfile("shell:AppsFolder\\" + application[1])
+            return f"Solicité a Windows que abriera «{application[0]}»."
+        return launch_verified(application, self.running, start_application).message
+
+    def system_application(self, title):
+        path = str(PureWindowsPath(os.environ["SystemRoot"]) / SYSTEM_EXECUTABLES[title])
+        evidence = [Identity("exe", path)]
+        if title == "calculadora":
+            evidence.append(Identity("aumid", "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"))
+        if title == "bloc de notas":
+            evidence.append(Identity("aumid", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"))
+        return Application(title, "windows", Identity("file", path), tuple(evidence))
+
+    def choose_application(self, title, selection=None, voice=False):
+        if selection is None and (title in SYSTEM_LOCATIONS or title in SYSTEM_EXECUTABLES):
+            return None
         apps = self.applications()
+        options = [(app, app_option(app)) if isinstance(app, Application) else (app, TargetOption(app[0], app))
+                   for app in apps]
         if selection is not None:
-            if selection not in apps:
-                raise ValueError("La aplicación elegida ya no está disponible. Vuelve a pedir la orden.")
-            name, app_id = selection
-        else:
-            matches = launch_matches(apps, title, exact_only=voice)
-            approximate = voice and not matches
-            if approximate:
-                matches = tuple({app[1].casefold(): app for app in
-                                 rank_targets(title, apps, lambda item: (item[0],))}.values())
-            if not matches:
-                message = f"No encontré «{title}» en el menú Inicio. Consulta «aplicaciones»."
-                if voice:
-                    raise ValueError(message)
-                return message
-            if len(matches) > 1 or approximate:
-                names = "\n".join(f"  {name}" for name, _ in matches)
-                heading = "Aplicaciones posibles" if approximate else "Encontré varias aplicaciones"
-                raise AmbiguousTarget(f"{heading}. Usa su nombre completo:\n{names}",
-                                      "aplicaciones", (TargetOption(item[0], item) for item in matches))
-            name, app_id = matches[0]
-        if title == normalize("Explorador") or normalize(name) in {"explorador de archivos", "file explorer"}:
-            os.startfile(os.environ["SystemRoot"] + r"\explorer.exe")
-        else:
-            os.startfile("shell:AppsFolder\\" + app_id)
-        return f"Solicité a Windows que abriera «{name}»."
+            for app, option in options:
+                if option.target == selection:
+                    return app
+            raise ValueError("La aplicación elegida ya no está disponible. Vuelve a pedir la orden.")
+        lookup = lambda item: app_names(item[0]) if isinstance(item[0], Application) else (item[0][0],)
+        matches, approximate = resolve(title, options, lookup)
+        if len(matches) > 1 or approximate:
+            duplicated = len({name_key(option.label) for _, option in matches}) < len(matches)
+            choices = tuple(TargetOption(
+                f"{option.label} ({SOURCE_LABELS.get(app.source, app.source)})"
+                if duplicated and isinstance(app, Application) else option.label, option.target
+            ) for app, option in matches)
+            heading = "Encontré varias aplicaciones" if len(choices) > 1 else "Encontré una aplicación parecida"
+            raise AmbiguousTarget(heading + ":\n" + "\n".join(
+                f"{index}. {option.label}" for index, option in enumerate(choices, 1)), "aplicaciones", choices)
+        return matches[0][0] if matches else None
 
     def minimize(self, title, selection=None, voice=False):
-        if voice or selection is not None:
-            matches = [self.select_window(title, selection, voice=True)]
-        else:
-            matches = matching_windows(self.windows(), title)
-        if not matches:
-            return f"No encontré ninguna ventana abierta que coincida con «{title}»."
-        minimized = []
-        failed = []
+        matches, approximate = self.window_matches(title) if not voice and selection is None else ((), False)
+        if approximate or len({normalize(window[2]) for window in matches}) != 1:
+            matches = (self.select_window(title, selection, voice),)
+        results = []
         for handle, name, _ in matches:
             if not self.api.IsIconic(handle):
-                self.api.ShowWindow(handle, 6)  # SW_MINIMIZE
-            (minimized if self.api.IsIconic(handle) else failed).append(name)
-        lines = [f"Minimicé «{name}»." for name in minimized]
-        lines.extend(f"No pude minimizar «{name}»." for name in failed)
-        return "\n".join(lines)
+                self.api.ShowWindow(handle, 6)
+            results.append(f"Minimicé «{name}»." if self.api.IsIconic(handle) else f"No pude minimizar «{name}».")
+        return "\n".join(results)
+
+    def window_option(self, window):
+        owner = getattr(self, "window_owners", {}).get(window[0])
+        token = (owner.pid, owner.started) if owner else ()
+        return TargetOption(window[1], (*window, *token))
+
+    def window_matches(self, title):
+        windows = self.windows()
+        owners = getattr(self, "window_owners", {})
+        entries = self.index.snapshot() if getattr(self, "index", None) is not None else ()
+        def names(window):
+            handle, caption, exe = window
+            owner = owners.get(handle)
+            installed = (alias for app in entries if owner and matches_identity(app, owner)
+                         for alias in app_names(app))
+            segments = tuple(re.split(r" (?:[-–—|·]) ", caption))
+            return (caption, exe, *APP_NAMES.get(normalize(exe), ()), *segments, *installed)
+        return resolve(title, windows, names)
 
     def select_window(self, title, selection=None, voice=False):
-        windows = self.windows()
         if selection is not None:
-            if selection not in windows:
-                raise ValueError("La ventana elegida ha cambiado o se ha cerrado. Vuelve a pedir la orden.")
-            return selection
-        matches = matching_windows(windows, title, exact_only=voice)
-        approximate = voice and not matches
-        if approximate:
-            matches = rank_targets(title, windows, lambda item: (item[1], item[2], *APP_NAMES.get(item[2], ())))
+            for window in self.windows():
+                option = self.window_option(window)
+                if option.target == selection:
+                    return window
+                if len(selection) == 5 and window[0] == selection[0] and option.target[2:] == selection[2:]:
+                    return window
+            raise ValueError("La ventana elegida ha cambiado o se ha cerrado. Vuelve a pedir la orden.")
+        matches, approximate = self.window_matches(title)
         if not matches:
             raise ValueError(f"No encontré una ventana de «{title}». Puedes usar «abre {title}».")
         if len(matches) > 1 or approximate:
             names = "\n".join(f"  {name}" for _, name, _ in matches)
-            raise AmbiguousTarget(f"Hay varias ventanas. Usa un título más específico:\n{names}",
-                                  "ventanas", (TargetOption(item[1], item) for item in matches))
+            heading = "Hay varias ventanas" if len(matches) > 1 else "Encontré una ventana parecida"
+            raise AmbiguousTarget(f"{heading}. Comprueba el destino:\n{names}",
+                                  "ventanas", map(self.window_option, matches))
         return matches[0]
 
     def window_action(self, action, title, selection=None, voice=False):
@@ -306,6 +340,8 @@ class Desktop:
         if action == "close":
             if not self.api.PostMessageW(handle, 0x0010, 0, 0):  # WM_CLOSE
                 raise c.WinError(c.get_last_error())
+            if self.api.IsWindow(handle) == 0:
+                return f"Cerré «{name}»."
             return f"Solicité cerrar «{name}». Revisa si la aplicación pide guardar cambios."
         if action == "restore":
             self.api.ShowWindow(handle, 1)  # SW_SHOWNORMAL, also for a previously maximized window
@@ -393,6 +429,18 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
         target["voice"] = True
     category = classify(parsed, normalize(selection[0]) if action == "open" and selection else "")
     try:
+        # Resolve before authorizing so aliases cannot disguise administrative apps.
+        if policy is not None and action == "open":
+            if policy.method(category) == BLOCK:
+                return RejectedAction("Esa acción está bloqueada en Seguridad y permisos.", "politica")
+            app = desktop.choose_application(args[0], selection, voice=True)
+            if app is not None:
+                option = app_option(app) if isinstance(app, Application) else TargetOption(app[0], app)
+                candidates = app_names(app) if isinstance(app, Application) else (option.label,)
+                if any(classify(parsed, name_key(name)) == "administration" for name in candidates):
+                    category = "administration"
+                selection = option.target
+                target["selection"] = selection
         if policy is not None and not approved:
             method = policy.method(category)
             if method == BLOCK:
@@ -400,7 +448,7 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
             if method != ALLOW:
                 if action == "close":
                     window = desktop.select_window(args[0], selection, voice=True)
-                    chosen = SelectedCommand(command, TargetOption(window[1], window))
+                    chosen = SelectedCommand(command, desktop.window_option(window))
                     return LocalApproval(chosen, f"Cerrar la ventana «{window[1]}»", method, category)
                 chosen = SelectedCommand(command, TargetOption(selection[0], selection)) if selection else command
                 label = "Salir de JARVIS" if action == "exit" else command.capitalize()
@@ -420,7 +468,13 @@ def execute(desktop, command, conversational=False, selection=None, policy=None,
                 for _, title, executable in desktop.windows()
             ) or "No encontré ventanas."
         if action == "apps":
-            return "\n".join(name for name, _ in desktop.applications()) or "No encontré aplicaciones en el menú Inicio."
+            return "\n".join(
+                f"{app.name} · {SOURCE_LABELS.get(app.source, app.source)}"
+                + (" · sin ruta de arranque" if app.route.kind == "unavailable" else "")
+                if isinstance(app, Application) else app[0] for app in desktop.applications()
+            ) or "No encontré aplicaciones indexadas."
+        if action == "refresh_apps":
+            return desktop.refresh_applications()
         if action == "open":
             return desktop.open_app(*args, **target)
         if action == "minimize":

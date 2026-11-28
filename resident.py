@@ -18,7 +18,7 @@ from commands import clean, parse
 from permissions import BUTTON, CODE, HOTKEY, VERBAL, classify
 from security_dialog import SecurityDialog
 from dialogue import Clarification, SelectedCommand
-from preferences import (microphone_enabled, save_voice_settings, set_microphone,
+from preferences import (application_folders, save_application_folders, microphone_enabled, save_voice_settings, set_microphone,
                          set_startup, starts_with_windows, voice_settings, security_settings, save_security_settings,
                          adaptation_settings, save_adaptation_settings)
 from speaker_dialog import SpeakerDialog
@@ -128,6 +128,7 @@ class Resident:
             ("Perfiles de voz…", False, self.open_speakers),
             ("Adaptación de voz…", False, self.open_adaptation),
             ("Seguridad y permisos…", False, self.open_security),
+            ("Carpetas de aplicaciones…", False, self.configure_application_folders),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
@@ -282,7 +283,7 @@ class Resident:
         if self.is_exit_command(command):
             return False
         future = self.assistant.submit(command)
-        future.add_done_callback(lambda completed: self.defer(self.finish_command, completed))
+        future.add_done_callback(lambda completed: self.defer(self.finish_command, completed, command))
         return True
 
     @staticmethod
@@ -292,8 +293,31 @@ class Resident:
         except Exception as error:
             return f"No se pudo completar la orden: {error}"
 
-    def finish_command(self, completed):
-        self.panel.reply(self.command_result(completed))
+    def configure_application_folders(self):
+        current = application_folders()
+        selected = filedialog.askdirectory(parent=self.root, title="Añadir una carpeta de aplicaciones o juegos")
+        if selected:
+            updated = tuple(dict.fromkeys((*current, str(Path(selected)))))
+            save_application_folders(updated)
+        elif current and messagebox.askyesno("JARVIS", "¿Quitar todas las carpetas adicionales del catálogo?",
+                                             default="no", parent=self.root):
+            save_application_folders(())
+        else:
+            return
+        self.assistant.desktop.index.refresh(force=True)
+
+    def finish_command(self, completed, command):
+        result = self.command_result(completed)
+        if not isinstance(result, Clarification):
+            self.panel.reply(result)
+            return
+        choice = simpledialog.askinteger("Selecciona el destino", result.written + "\n\nNúmero de la opción:",
+                                         parent=self.root, minvalue=1, maxvalue=len(result.options))
+        if choice is None:
+            self.panel.reply("Orden cancelada.")
+            return
+        future = self.assistant.submit(SelectedCommand(command, result.options[choice - 1]))
+        future.add_done_callback(lambda finished: self.defer(self.finish_command, finished, command))
 
     def can_use_voice(self, speaker, revision=None):
         if self.closing or not self.microphone or not self.voice_options.enabled:

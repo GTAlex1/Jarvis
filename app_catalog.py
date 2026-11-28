@@ -70,15 +70,18 @@ def consolidate(applications):
     routes = {}
     executable_indices = {}
     sources = {"steam": 0, "epic": 0, "riot": 0, "hoyoplay": 0, "xbox": 0, "ea": 0,
-               "ubisoft": 0, "battlenet": 0, "gog": 0, "start": 2, "shortcut": 1,
+               "ubisoft": 0, "battlenet": 0, "gog": 0, "start": 1, "shortcut": 2,
                "registry": 3, "portable": 4}
     for app in sorted(applications, key=lambda app: sources.get(app.source, 2)):
         index = routes.get(app.key)
         if index is None and not app.game:
             keys = {i.value.casefold() for i in app.evidence if i.kind == "exe"}
             for key in keys:
-                for candidate in executable_indices.get(key, ()):
-                    if result[candidate].source != "shortcut" or app.source != "shortcut":
+                for candidate in sorted(executable_indices.get(key, ())):
+                    if app.source != "shortcut" or (
+                            result[candidate].source == "start" and name_key(app.name)
+                            in set(map(name_key, labels(result[candidate])))
+                    ):
                         index = candidate
                         break
                 if index is not None:

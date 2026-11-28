@@ -170,3 +170,19 @@ def save_adaptation_settings(adaptation):
 
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, "VoiceAdaptation", 0, winreg.REG_SZ, json.dumps(asdict(adaptation)))
+
+
+def application_folders():
+    try:
+        data = json.loads(read_value(SETTINGS_KEY, "ApplicationFolders", "[]"))
+    except (OSError, TypeError, ValueError):
+        return ()
+    return tuple(item for item in data[:24] if isinstance(item, str)) if isinstance(data, list) else ()
+
+
+def save_application_folders(folders):
+    import winreg
+    if len(folders) > 24:
+        raise ValueError("Puedes añadir hasta 24 carpetas al catálogo.")
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, SETTINGS_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "ApplicationFolders", 0, winreg.REG_SZ, json.dumps(folders))
