@@ -1,9 +1,93 @@
 {
   "schema": 1,
   "versions": {
-    "0.6.4.2": {"channel": "experimental", "status": "experimental disponible"},
-    "0.6.5-rc.1": {"channel": "experimental", "status": "defectuosa", "issues": ["game_roots no inicializado detiene el catálogo"], "replacement": "0.6.5-rc.2"},
-    "0.6.5-rc.2": {"channel": "experimental", "status": "obsoleta"},
-    "0.6.5-rc.3": {"channel": "experimental", "status": "pendiente de validación"}
+    "0.3.0": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T12:44:19Z"
+    },
+    "0.4.0": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T12:57:32Z"
+    },
+    "0.4.1": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T13:07:20Z"
+    },
+    "0.5.0": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T17:14:48Z"
+    },
+    "0.6.0": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T17:36:38Z"
+    },
+    "0.6.1": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T18:06:34Z"
+    },
+    "0.6.2": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T18:31:03Z"
+    },
+    "0.6.3": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T19:08:32Z"
+    },
+    "0.6.4": {
+      "channel": "stable",
+      "status": "obsoleta",
+      "published_at": "2026-11-27T22:27:25Z"
+    },
+    "0.6.4.1": {
+      "channel": "stable",
+      "status": "estable",
+      "published_at": "2026-11-27T23:24:27Z"
+    },
+    "0.6.4.2": {
+      "channel": "experimental",
+      "status": "experimental disponible",
+      "published_at": "2026-11-28T01:10:13Z"
+    },
+    "0.6.5-rc.1": {
+      "channel": "experimental",
+      "status": "defectuosa",
+      "issues": [
+        "game_roots no inicializado detiene el catálogo"
+      ],
+      "replacement": "0.6.5-rc.2",
+      "published_at": "2026-11-28",
+      "reason": "La excepción NameError impide abrir aplicaciones y juegos en equipos afectados.",
+      "artifacts": [
+        {
+          "id": 15263069144,
+          "head": "3f1c458731d49e2b22c66317f215ae721a4b7de1"
+        },
+        {
+          "id": 15263074998,
+          "head": "390dee0f7059e331bdf3b9a8c460be422d5b7cec"
+        }
+      ]
+    },
+    "0.6.5-rc.2": {
+      "channel": "experimental",
+      "status": "obsoleta",
+      "published_at": "2026-11-28",
+      "issues": [
+        "Honkai Star Rail podía quedar sin ruta",
+        "Historial ambiguo y variabilidad acústica con reproducción"
+      ]
+    },
+    "0.6.5-rc.3": {
+      "channel": "experimental",
+      "status": "pendiente de validación"
+    }
   }
 }

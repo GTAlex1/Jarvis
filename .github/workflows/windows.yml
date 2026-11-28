@@ -24,6 +24,7 @@ jobs:
   build:
     permissions:
       contents: write
+      actions: write
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +140,44 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el commit de la wiki.' }
           git -C wiki-publish push origin HEAD:master
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la wiki.' }
+      - name: Publica la candidata experimental y retira artefactos defectuosos
+        if: github.ref == 'refs/heads/dev/0.6.5-universal-apps'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = python -c "from updater import VERSION; print(VERSION)"
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo leer la versión.' }
+          if ($version -ne '0.6.5-rc.3') { exit 0 }
+          $tag = "v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag dist/JARVIS.exe --target $env:GITHUB_SHA --repo $env:GITHUB_REPOSITORY --title "JARVIS $tag · Experimental" --notes-file docs/release-rc3.md --prerelease --latest=false
+            if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la candidata.' }
+          }
+          $json = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo verificar la candidata publicada.' }
+          $release = $json | ConvertFrom-Json
+          $verified = $release.assets | Where-Object { $_.name -eq 'JARVIS.exe' -and $_.digest -match '^sha256:[0-9a-f]{64}$' }
+          if ($release.draft -or -not $release.prerelease -or -not $verified) { throw 'La candidata no ofrece un ejecutable verificable.' }
+          $registry = Get-Content assets/release-policy.json -Raw | ConvertFrom-Json
+          $broken = $registry.versions.'0.6.5-rc.1'
+          if ($broken.status -notin @('defectuosa', 'retirada')) { exit 0 }
+          foreach ($artifact in $broken.artifacts) {
+            $endpoint = "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($artifact.id)"
+            $info = gh api $endpoint 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              if ("$info" -match 'HTTP 404') { continue }
+              throw 'No se pudo verificar el artefacto anterior.'
+            }
+            $details = ("$info" | ConvertFrom-Json)
+            if ($details.name -ne 'JARVIS-Windows-x64' -or $details.workflow_run.head_sha -ne $artifact.head) {
+              throw 'La identidad del artefacto anterior no coincide con el registro.'
+            }
+            gh api --method DELETE $endpoint
+            if ($LASTEXITCODE -ne 0) { throw 'No se pudo retirar el artefacto defectuoso.' }
+            Write-Output "Artefacto retirado: $($artifact.id)"
+          }
       - name: Publica una versión nueva
         if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.publish
         shell: pwsh
