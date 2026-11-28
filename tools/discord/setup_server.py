@@ -53,10 +53,12 @@ async def configure(guild, client):
     roles = {}
     for name, color in ROLES.items():
         role = unique([r for r in guild.roles if not r.managed], name)
+        if name == "Nexora" and role is None:
+            role = unique([r for r in guild.roles if not r.managed], "Nexora AI")
         if role is None:
             role = await guild.create_role(name=name, colour=discord.Colour(color),
                                            permissions=discord.Permissions.none(), reason="Nexora setup")
-        elif role.managed or role >= me.top_role or role.permissions.value:
+        elif role.managed or role >= me.top_role or (role.permissions.value and name != "Moderator"):
             raise RuntimeError(f"Rol existente no seguro para reutilizar: {name}")
         roles[name] = role
     owner = await guild.fetch_member(guild.owner_id)
@@ -76,6 +78,15 @@ async def configure(guild, client):
         for role_name in access:
             overwrites[roles[role_name]] = discord.PermissionOverwrite(
                 view_channel=True, send_messages=True, connect=True, read_message_history=True)
+        if name in ("DESARROLLO", "NEXORA INSIDER"):
+            previous = unique(guild.categories, name)
+            if previous is None:
+                previous = next((c for c in guild.categories if c.name.endswith("・"+name)),None)
+            if previous and previous.overwrites_for(roles["Developer"]).manage_messages:
+                dev_overwrite = overwrites.get(roles["Developer"], discord.PermissionOverwrite())
+                dev_overwrite.manage_messages = True
+                dev_overwrite.manage_threads = True
+                overwrites[roles["Developer"]] = dev_overwrite
         if mode == "read":
             for role_name in STAFF:
                 overwrites[roles[role_name]] = discord.PermissionOverwrite(
