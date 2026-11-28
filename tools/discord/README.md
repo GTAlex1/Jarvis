@@ -27,3 +27,6 @@ No se ha publicado una release de JARVIS ni se ha creado el servidor mediante es
 
 ## Interfaz v2
 Abre Abrir-Nexora.cmd. Personalizar renombra categorías conservando IDs, ordena roles, configura verificación media, añade embeds y AutoMod de menciones. Crea foros adicionales si Comunidad está habilitada. Auditar revisa accesos básicos sin modificar el servidor. No borra canales iniciales ni mensajes. No concede permisos de moderación ni retira Administrador automáticamente. Revisa manualmente los resultados. La v2 aún no se ha probado contra Discord.
+
+## v3.0
+Tras Personalizar y habilitar Comunidad, pulsa Configurar permisos v3. Developer gestiona mensajes e hilos en Desarrollo e Insider; Moderator puede expulsar, banear, moderar y gestionar mensajes e hilos, sin Administrador ni gestión de roles. Nexora AI sustituye el rol visual duplicado. Auditar sigue siendo una comprobación básica. Retirar Administrador es una operación independiente y debe hacerse al final; si Discord impide editar el rol gestionado, retira el permiso manualmente. No se eliminan canales. No se ha probado v3 en Discord.
