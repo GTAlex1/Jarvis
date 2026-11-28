@@ -2,12 +2,25 @@
 import ctypes as c
 from ctypes import wintypes as w
 from contextlib import contextmanager
+from dataclasses import dataclass
+from hashlib import file_digest
+from pathlib import Path
+import re
 import time
+
+from tray_theme import ICONS, appearance
+from updater import VERSION
 
 # The suffix distinguishes this project's objects from other apps named JARVIS.
 WINDOW_CLASS = "GTAlex1.Jarvis.Resident.57D0676F"
 MUTEX_NAME = "Local\\" + WINDOW_CLASS
 OPEN_MESSAGE = WINDOW_CLASS + ".Open"
+CLOSE_MESSAGE = WINDOW_CLASS + ".CloseAfterConsent"
+VERSION_CAPTION = "JARVIS resident "
+LEGACY_BINARIES = {
+    "a34a5a35784281db6eba6f0f094eca1333f59603c300f2755dfe0a30f682ef92": "0.6.4.2",
+    "7ca1421c7b72b131779e08883d65e410b30b5ff46699bf5bde914e2498503826": "0.6.4.1",
+}
 WM_TRAY = 0x8001  # WM_APP + 1
 WM_NULL = 0
 WM_HOTKEY = 0x0312
@@ -18,6 +31,7 @@ NIN_SELECT = 0x0400
 NIN_KEYSELECT = 0x0401
 NIM_ADD, NIM_MODIFY, NIM_DELETE, NIM_SETVERSION = 0, 1, 2, 4
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_SHOWTIP = 1, 2, 4, 0x80
+NIF_INFO = 0x10
 ERROR_ALREADY_EXISTS = 183
 MF_SEPARATOR = 0x0800
 MF_CHECKED = 0x0008
@@ -82,16 +96,92 @@ def show_running_instance():
     return False
 
 
+@dataclass(frozen=True)
+class ActiveInstance:
+    window: int
+    pid: int
+    version: str = ""
+    cooperates: bool = False
+
+
+def native_instance():
+    user = c.WinDLL("user32", use_last_error=True)
+    find = bind(user, "FindWindowW", [w.LPCWSTR, w.LPCWSTR], w.HWND)
+    text = bind(user, "GetWindowTextW", [w.HWND, w.LPWSTR, c.c_int], c.c_int)
+    owner = bind(user, "GetWindowThreadProcessId", [w.HWND, c.POINTER(w.DWORD)], w.DWORD)
+    window = find(WINDOW_CLASS, None)
+    if not window:
+        return None
+    name = c.create_unicode_buffer(128)
+    pid = w.DWORD()
+    owner(window, c.byref(pid))
+    text(window, name, len(name))
+    caption = name.value
+    version = caption.removeprefix(VERSION_CAPTION)
+    if caption.startswith(VERSION_CAPTION) and re.fullmatch(r"[0-9][0-9.]+(?:-(?:rc|beta|alpha)\.[0-9]+)?", version):
+        return ActiveInstance(window, pid.value, version, True)
+    return ActiveInstance(window, pid.value, legacy_version(pid.value))
+
+
+def legacy_version(pid):
+    kernel = c.WinDLL("kernel32", use_last_error=True)
+    open_process = bind(kernel, "OpenProcess", [w.DWORD, w.BOOL, w.DWORD], w.HANDLE)
+    close = bind(kernel, "CloseHandle", [w.HANDLE], w.BOOL)
+    query = bind(kernel, "QueryFullProcessImageNameW", [w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD)], w.BOOL)
+    process = open_process(0x1000, False, pid)
+    if not process:
+        return ""
+    try:
+        path = c.create_unicode_buffer(32768)
+        size = w.DWORD(len(path))
+        if query(process, 0, path, c.byref(size)):
+            binary = Path(path.value)
+            if binary.suffix.lower() == ".exe" and 30_000_000 < binary.stat().st_size < 110_000_000:
+                with binary.open("rb") as stream:
+                    return LEGACY_BINARIES.get(file_digest(stream, "sha256").hexdigest(), "")
+    except OSError:
+        pass
+    finally:
+        close(process)
+    return ""
+
+
+def request_handover(active):
+    # Reconfirm the same window, owning process and version before sending the
+    # dedicated message. Old binaries do not understand it and close manually.
+    if not active or not active.cooperates or native_instance() != active:
+        return False
+    user = c.WinDLL("user32", use_last_error=True)
+    register = bind(user, "RegisterWindowMessageW", [w.LPCWSTR], w.UINT)
+    post = bind(user, "PostMessageW", [w.HWND, w.UINT, w.WPARAM, w.LPARAM], w.BOOL)
+    message = register(CLOSE_MESSAGE)
+    return bool(message and post(active.window, message, 0, 0))
+
+
+def handover_kind(active, version):
+    from updater import version_tuple
+
+    if not active or not active.version:
+        return "manual"
+    try:
+        if version_tuple(active.version) >= version_tuple(version):
+            return "existing"
+    except ValueError:
+        return "manual"
+    return "cooperative" if active.cooperates else "manual"
+
+
 class WindowsTray:
-    def __init__(self, root, show, menu_items, run_action, defer):
+    def __init__(self, root, show, menu_items, run_action, defer, quit=None):
         self.root = root
         self.show = show
         self.menu_items = menu_items
         self.run_action = run_action
         self.defer = defer
+        self.quit = quit
         self.retry = None
         self.visible = False
-        self.tooltip = "JARVIS"
+        self.theme, self.tooltip = appearance("disabled")
         self.version4 = False
         self.hotkey = None
         self.hotkey_id = 1000
@@ -125,7 +215,9 @@ class WindowsTray:
             "DestroyWindow": ([w.HWND], w.BOOL),
             "DefWindowProcW": ([w.HWND, w.UINT, w.WPARAM, w.LPARAM], result),
             "PostMessageW": ([w.HWND, w.UINT, w.WPARAM, w.LPARAM], w.BOOL),
-            "LoadIconW": ([w.HINSTANCE, c.c_void_p], w.HICON),
+            "LoadImageW": ([w.HINSTANCE, w.LPCWSTR, w.UINT, c.c_int, c.c_int, w.UINT], w.HANDLE),
+            "DestroyIcon": ([w.HICON], w.BOOL),
+            "GetSystemMetrics": ([c.c_int], c.c_int),
             "CreatePopupMenu": ([], w.HMENU),
             "AppendMenuW": ([w.HMENU, w.UINT, c.c_size_t, w.LPCWSTR], w.BOOL),
             "DestroyMenu": ([w.HMENU], w.BOOL),
@@ -139,8 +231,10 @@ class WindowsTray:
         self.instance = bind(kernel, "GetModuleHandleW", [w.LPCWSTR], w.HMODULE)(None)
         self.taskbar_created = user.RegisterWindowMessageW("TaskbarCreated")
         self.open_message = user.RegisterWindowMessageW(OPEN_MESSAGE)
-        self.icon = user.LoadIconW(None, 32512)  # Shared IDI_APPLICATION icon.
-        if not all((self.instance, self.taskbar_created, self.open_message, self.icon)):
+        self.close_message = user.RegisterWindowMessageW(CLOSE_MESSAGE)
+        self.icons = {}
+        if not all((self.instance, self.taskbar_created, self.open_message, self.close_message,
+                    self.icon_for(self.theme))):
             raise c.WinError(c.get_last_error())
         self.proc = wndproc(self.window_proc)
         definition = WindowClass(proc=self.proc, instance=self.instance, class_name=WINDOW_CLASS)
@@ -148,12 +242,34 @@ class WindowsTray:
             raise c.WinError(c.get_last_error())
         # A hidden top-level window receives Explorer's TaskbarCreated broadcast.
         self.window = user.CreateWindowExW(
-            0, WINDOW_CLASS, "", 0, 0, 0, 0, 0, None, None, self.instance, None,
+            0, WINDOW_CLASS, VERSION_CAPTION + VERSION, 0, 0, 0, 0, 0, None, None, self.instance, None,
         )
         if not self.window:
             error = c.get_last_error()
             user.UnregisterClassW(WINDOW_CLASS, self.instance)
             raise c.WinError(error)
+
+    def icon_for(self, theme):
+        if theme not in self.icons:
+            self.icons[theme] = self.user.LoadImageW(
+                None, str(ICONS / f"{theme}.ico"), 1,
+                self.user.GetSystemMetrics(49), self.user.GetSystemMetrics(50), 0x0010,
+            )
+        return self.icons[theme]
+
+    def set_state(self, state):
+        theme, tooltip = appearance(state)
+        if (theme, tooltip) == (self.theme, self.tooltip):
+            return
+        if self.icon_for(theme):
+            self.theme = theme
+        self.tooltip = tooltip
+        if self.visible:
+            data = self.notify_data()
+            data.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP
+            data.hIcon = self.icon_for(self.theme)
+            data.szTip = self.tooltip
+            self.notify(NIM_MODIFY, c.byref(data))
 
     def notify_data(self):
         data = NotifyIconData()
@@ -167,7 +283,7 @@ class WindowsTray:
         data = self.notify_data()
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP
         data.uCallbackMessage = WM_TRAY
-        data.hIcon = self.icon
+        data.hIcon = self.icon_for(self.theme)
         data.szTip = self.tooltip
         self.visible = bool(self.notify(NIM_ADD, c.byref(data)) or
                             self.notify(NIM_MODIFY, c.byref(data)))
@@ -178,12 +294,13 @@ class WindowsTray:
             self.retry = self.root.after(1500, self.add_icon, retries - 1)
         return self.visible
 
-    def set_tooltip(self, text):
-        self.tooltip = text[:127]
+    def notify_background(self):
         if self.visible:
             data = self.notify_data()
-            data.uFlags = NIF_TIP | NIF_SHOWTIP
-            data.szTip = self.tooltip
+            data.uFlags = NIF_INFO
+            data.szInfoTitle = "JARVIS"
+            data.szInfo = "JARVIS sigue en segundo plano. Usa «Salir completamente» en la bandeja para finalizarlo."
+            data.dwInfoFlags = 1
             self.notify(NIM_MODIFY, c.byref(data))
 
     def restore_icon(self):
@@ -196,6 +313,8 @@ class WindowsTray:
         # callbacks and let the resident call Tk once the dispatch is over.
         if message == self.open_message:
             self.defer(self.show)
+        elif message == self.close_message and self.quit:
+            self.defer(self.quit)
         elif message == self.taskbar_created:
             self.defer(self.restore_icon)
         elif message == WM_HOTKEY:
@@ -261,4 +380,7 @@ class WindowsTray:
             self.notify(NIM_DELETE, c.byref(data))
         self.user.DestroyWindow(self.window)
         self.user.UnregisterClassW(WINDOW_CLASS, self.instance)
+        for icon in self.icons.values():
+            if icon:
+                self.user.DestroyIcon(icon)
         self.window = None

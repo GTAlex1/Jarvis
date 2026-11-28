@@ -4,9 +4,11 @@ from concurrent.futures import Future
 from dataclasses import replace
 from queue import Empty, SimpleQueue
 from subprocess import SubprocessError
+import os
+import subprocess
 import sys
 from threading import Thread
-from time import monotonic
+from time import monotonic, sleep
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import json
@@ -27,9 +29,13 @@ from voice_authorization import (ApprovalAnswer, ExitAction, LocalApproval, Pend
 from windows_protection import ProfileStore
 from updater import VERSION, acknowledge_startup, install_update, latest_update
 from voice_service import STATE_LABELS, VoiceService
-from windows_tray import WindowsTray, show_running_instance, single_instance
+from windows_tray import (WindowsTray, handover_kind, native_instance, request_handover,
+                          show_running_instance, single_instance)
 from voice_diagnostics import LOG, configure as configure_log
 from windows_actions import perform_power
+from app_catalog import name_key
+from voice_context import ContextOrder
+import english_voice
 
 
 class Resident:
@@ -44,6 +50,11 @@ class Resident:
         self.update_busy = False
         self.installing = False
         self.closing = False
+        self.restart_requested = False
+        self.hidden_notice = False
+        self.running_commands = 0
+        self.language_busy = False
+        self.last_correction = None
         self.update_status = f"Versión {VERSION}"
         self.packaged = getattr(sys, "frozen", False)
         self.microphone = microphone_enabled()
@@ -74,10 +85,11 @@ class Resident:
             lambda result: self.defer(self.show_test, result),
             lambda speaker: self.defer(self.cancel_pending, speaker),
         )
+        self.voice.context_names = self.assistant.desktop.context_names
         self.voice.set_security(self.policy.biometrics)
         self.voice.set_adaptation(self.adaptation)
         self.voice.set_profiles(self.profiles, self.profile_error)
-        self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer)
+        self.tray = WindowsTray(root, self.show, self.menu_items, self.run_action, self.defer, self.accept_handover)
         root.protocol("WM_DELETE_WINDOW", self.hide)
 
     def run(self, background):
@@ -116,6 +128,9 @@ class Resident:
         # Keep a way back into the panel if Explorer is still starting.
         if self.tray.visible:
             self.root.withdraw()
+            if not self.hidden_notice:
+                self.hidden_notice = True
+                self.tray.notify_background()
         else:
             self.root.iconify()
 
@@ -125,16 +140,21 @@ class Resident:
             ("Micrófono", self.microphone, self.toggle_microphone),
             ("Iniciar con Windows", self.autostart, self.toggle_startup),
             ("Escucha permanente", self.voice_options.enabled, self.toggle_voice),
-            ("Ajustes de voz…", False, self.open_voice_settings),
+            ("Configuración de voz…", False, self.open_voice_settings),
+            ("Voz en español", self.voice_options.language == "es", self.use_spanish),
+            ("Voz en inglés…", self.voice_options.language == "en", self.use_english),
             ("Perfiles de voz…", False, self.open_speakers),
             ("Adaptación de voz…", False, self.open_adaptation),
+            *((("Guardar última corrección…", False, self.save_last_correction),) if self.last_correction else ()),
             ("Seguridad y permisos…", False, self.open_security),
             ("Añadir carpeta de aplicaciones…", False, self.configure_application_folders),
             ("Quitar carpetas adicionales…", False, self.clear_application_folders),
             ("Confirmar acción de voz…", False, self.confirm_voice),
             ("Detener respuesta de voz / cancelar acción", False, self.cancel_voice),
             None,
-            ("Salir de JARVIS", False, self.quit),
+            (("Actualizar y reiniciar…" if self.available_update else "Buscar actualizaciones"), False, self.update_clicked),
+            ("Reiniciar JARVIS", False, self.restart),
+            ("Salir completamente", False, self.quit),
         )
 
     def run_action(self, action):
@@ -170,10 +190,56 @@ class Resident:
     def open_voice_settings(self):
         self.show()
         self.panel.open_voice_settings(
-            self.voice_options, self.save_voice, self.voice.refresh_catalog,
+            self.voice_options, lambda options: self.save_voice(replace(options, language=self.voice_options.language)), self.voice.refresh_catalog,
             self.voice.test_microphone, self.voice.cancel_test, lambda: self.voice.meter,
             lambda: self.voice.test_progress,
         )
+
+    def use_spanish(self):
+        self.save_voice(replace(self.voice_options, language="es"))
+
+    def use_english(self):
+        if self.language_busy:
+            return
+        if english_voice.installed():
+            self.save_voice(replace(self.voice_options, language="en"))
+            return
+        if not messagebox.askyesno("JARVIS", "¿Descargar el modelo local de inglés (41 MB)?",
+                                   parent=self.root):
+            return
+        self.language_busy = True
+
+        def install_model():
+            try:
+                english_voice.install()
+            except (OSError, ValueError) as error:
+                self.defer(self.finish_language, str(error))
+            else:
+                self.defer(self.finish_language, "")
+
+        Thread(target=install_model, name="jarvis-language", daemon=True).start()
+
+    def finish_language(self, error):
+        self.language_busy = False
+        if error:
+            self.show()
+            messagebox.showerror("JARVIS", error, parent=self.root)
+        else:
+            self.save_voice(replace(self.voice_options, language="en"))
+            self.record_voice("El reconocimiento en inglés está preparado.", "reply")
+
+    def save_last_correction(self):
+        if not self.last_correction:
+            return
+        alternative, canonical, expires = self.last_correction
+        if monotonic() > expires:
+            self.last_correction = None
+            raise ValueError("La corrección ha caducado. Puedes escribirla en Adaptación de voz.")
+        options = self.adaptation.corrected(alternative, canonical)
+        if messagebox.askyesno("JARVIS", f"¿Guardar «{alternative}» como pronunciación de «{canonical}»?",
+                               default="no", parent=self.root):
+            self.save_adaptation(options)
+            self.last_correction = None
 
     def open_adaptation(self):
         if self.adaptation_dialog is not None and self.adaptation_dialog.window.winfo_exists():
@@ -249,7 +315,7 @@ class Resident:
         if state not in {"disabled", "muted"} and (not self.microphone or not self.voice_options.enabled):
             return
         self.voice_status = (state, detail)
-        self.tray.set_tooltip(f"JARVIS · {STATE_LABELS[state]}")
+        self.tray.set_state("executing" if self.running_commands and state in {"waiting", "disabled", "muted"} else state)
         if self.panel is not None:
             self.panel.voice_status(state, detail)
 
@@ -257,6 +323,20 @@ class Resident:
         desired = not self.autostart
         set_startup(desired)
         self.autostart = desired
+
+    def accept_handover(self):
+        if not self.installing and not self.closing and messagebox.askyesno(
+            "JARVIS", "Otra versión de JARVIS ha solicitado iniciar. ¿Cerrar esta sesión?",
+            default="no", parent=self.root,
+        ):
+            self.stop()
+
+    def restart(self):
+        if self.installing:
+            self.quit()
+            return
+        self.restart_requested = True
+        self.stop()
 
     def quit(self):
         if self.installing:
@@ -288,6 +368,8 @@ class Resident:
             return True
         if self.is_exit_command(command):
             return False
+        self.running_commands += 1
+        self.tray.set_state("executing")
         future = self.assistant.submit(command)
         future.add_done_callback(lambda completed: self.defer(self.finish_command, completed, command))
         return True
@@ -317,6 +399,8 @@ class Resident:
             self.assistant.desktop.index.refresh(force=True)
 
     def finish_command(self, completed, command):
+        self.running_commands -= 1
+        self.tray.set_state("executing" if self.running_commands else self.voice_status[0])
         result = self.command_result(completed)
         if not isinstance(result, Clarification):
             self.panel.reply(result)
@@ -326,6 +410,8 @@ class Resident:
         if choice is None:
             self.panel.reply("Orden cancelada.")
             return
+        self.running_commands += 1
+        self.tray.set_state("executing")
         future = self.assistant.submit(SelectedCommand(command, result.options[choice - 1]))
         future.add_done_callback(lambda finished: self.defer(self.finish_command, finished, command))
 
@@ -376,9 +462,9 @@ class Resident:
         selected = clean(command.option.label) if isinstance(command, SelectedCommand) else ""
         category = classify(parse(source) or ("unknown",), selected)
         future.add_done_callback(lambda completed: self.defer(self.finish_voice, completed, speaker, reply,
-                                                               revision, category))
+                                                               revision, category, command))
 
-    def finish_voice(self, completed, speaker, reply, revision, category):
+    def finish_voice(self, completed, speaker, reply, revision, category, command=None):
         if not self.can_use_voice(speaker, revision):
             if reply is not None:
                 reply.set_result("")
@@ -409,6 +495,12 @@ class Resident:
             self.voice.trace("resultado", "solicitada_a_windows" if category == "open" else "devuelto_por_ejecutor")
         elif isinstance(result, Clarification):
             self.voice.trace("permiso", "destino_por_aclarar")
+        if (isinstance(command, SelectedCommand) and isinstance(command.command, ContextOrder)
+                and isinstance(result, str) and not result.startswith(("No pude", "No encontré", "Se canceló"))):
+            intent = parse(command.command)
+            name = command.option.label.split(" · ", 1)[0]
+            if intent and len(intent) > 1 and name_key(intent[1]) != name_key(name):
+                self.last_correction = (intent[1], name, monotonic() + 120)
         shown = result.written if isinstance(result, Clarification) else result.message if isinstance(result, PowerScheduled) else result
         self.record_voice(shown, "reply")
         if reply is not None:
@@ -588,24 +680,73 @@ class Resident:
         self.refresh_update()
 
 
-def launch(create_panel, background):
-    with single_instance() as first:
-        if not first:
-            if not background and not show_running_instance():
-                messagebox.showinfo("JARVIS", "Ya hay una instancia de JARVIS en ejecución.")
-            return 0
+def restart_process():
+    env = os.environ.copy()
+    if getattr(sys, "frozen", False):
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        args = [sys.executable]
+    else:
+        args = [sys.executable, str(Path(__file__).with_name("jarvis_gui.py"))]
+    subprocess.Popen(args, env=env, shell=False)
 
-        assistant = Assistant()
-        root = None
+
+def run_primary(create_panel, background):
+    assistant = Assistant()
+    root = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        resident = Resident(root, assistant, create_panel)
+        resident.run(background)
+        return 0, resident.restart_requested
+    except (OSError, tk.TclError) as error:
+        messagebox.showerror("JARVIS", f"No se pudo iniciar JARVIS.\n{error}", parent=root)
+        return 1, False
+    finally:
+        if root is not None:
+            root.destroy()
+        assistant.close()
+
+
+def check_handover():
+    active = native_instance()
+    if active is None and show_running_instance():
+        active = native_instance()
+    mode = handover_kind(active, VERSION)
+    if mode == "existing":
+        show_running_instance()
+        return False
+    name = f"JARVIS {active.version}" if active and active.version else "Otra instancia de JARVIS"
+    if mode == "cooperative":
+        return (messagebox.askyesno("JARVIS", f"{name} sigue en segundo plano. ¿Cerrar esa sesión e iniciar {VERSION}?",
+                                    default="no") and request_handover(active))
+    show_running_instance()
+    return messagebox.askretrycancel(
+        "JARVIS", f"{name} sigue ejecutándose. Selecciona «Salir de JARVIS» en su bandeja "
+                  f"y pulsa Reintentar para iniciar JARVIS {VERSION}.", default="cancel")
+
+
+def launch(create_panel, background):
+    deadline = None
+    while True:
+        with single_instance() as first:
+            if first:
+                code, restart = run_primary(create_panel, background)
+                break
+        if background:
+            return 0
+        if deadline is None:
+            if not check_handover():
+                return 0
+            deadline = monotonic() + 40
+        elif monotonic() >= deadline:
+            messagebox.showinfo("JARVIS", "La instancia activa sigue cerrándose o está instalando una actualización.")
+            return 0
+        sleep(0.15)
+    if restart:
         try:
-            root = tk.Tk()
-            root.withdraw()
-            Resident(root, assistant, create_panel).run(background)
-        except (OSError, tk.TclError) as error:
-            messagebox.showerror("JARVIS", f"No se pudo iniciar JARVIS.\n{error}", parent=root)
+            restart_process()
+        except OSError as error:
+            messagebox.showerror("JARVIS", f"No se pudo reiniciar JARVIS.\n{error}")
             return 1
-        finally:
-            if root is not None:
-                root.destroy()
-            assistant.close()
-    return 0
+    return code

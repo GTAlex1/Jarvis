@@ -34,7 +34,7 @@ jobs:
       - run: python prepare_voice_model.py
       - run: python -m compileall -q .
       - name: Prueba comandos, bandeja, voz y rutas de captura sin micrófono físico
-        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul test_app_catalog
+        run: python -m unittest -v test_commands test_resident test_voice test_audio_input test_dialogue test_security test_permissions test_biometric_audio test_voice_overhaul test_app_catalog test_rc2
       - name: Comprueba la comparación de versiones
         run: python -c "from updater import version_tuple; assert version_tuple('v0.10.0') > version_tuple('0.9.9'); assert version_tuple('0.6.4') < version_tuple('0.6.4.1') < version_tuple('0.6.5')"
       - name: Empaqueta JARVIS y los motores de voz
@@ -45,7 +45,7 @@ jobs:
           $portaudio = python -c "import _sounddevice_data; from pathlib import Path; print(Path(next(iter(_sounddevice_data.__path__))) / 'portaudio-binaries')"
           if ($LASTEXITCODE -ne 0) { throw 'No se encontró PortAudio.' }
           $options = @(
-            '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS',
+            '--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'JARVIS', '--icon', 'assets/tray/waiting.ico',
             '--collect-binaries', 'vosk',
             '--copy-metadata', 'pocketsphinx', '--copy-metadata', 'sounddevice', '--copy-metadata', 'numpy',
             '--add-binary', "${portaudio}/libportaudio64bit.dll:_sounddevice_data/portaudio-binaries",
