@@ -80,7 +80,8 @@ async def configure(guild, client):
             for role_name in STAFF:
                 overwrites[roles[role_name]] = discord.PermissionOverwrite(
                     view_channel=True, send_messages=True, read_message_history=True)
-        category = unique(guild.categories, name)
+        icon = ["📌","🌐","🛠","🧪","⚡","💬","🎙","🔒"][next(i for i,c in enumerate(CATEGORIES) if c[0]==name)]
+        category = unique(guild.categories, name) or unique(guild.categories, f"{icon}・{name}")
         if category is None:
             category = await guild.create_category(name, overwrites=overwrites)
         else:
