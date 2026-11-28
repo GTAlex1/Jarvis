@@ -42,9 +42,17 @@ Si necesitas distinguir problemas del controlador y del reconocimiento, abre `%L
 
 ## Catálogo de aplicaciones y videojuegos
 
-La candidata **0.6.5-rc.1** incorpora un catálogo de Windows, tiendas, accesos locales y carpetas portables. Di `actualiza aplicaciones` tras instalar un programa o configura una carpeta desde la bandeja. Si el launcher requiere pulsar **Jugar**, JARVIS deja el arranque del juego sin confirmar. Si hay varias coincidencias, puedes elegir una por nombre o número.
+La candidata **0.6.5-rc.2** incorpora un catálogo de Windows, tiendas, accesos locales y carpetas portables. Di `actualiza aplicaciones` tras instalar un programa o configura una carpeta desde la bandeja. Si el launcher requiere pulsar **Jugar**, JARVIS deja el arranque del juego sin confirmar. Si hay varias coincidencias, puedes elegir una por nombre o número.
 
 Consulta la [cobertura y restricciones por proveedor](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/docs/catalogo-aplicaciones.md) y la [lista de pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#validación-física-de-065).
+
+## Cambios y comprobaciones de rc.2
+
+JARVIS relaciona las PWA con su ventana y muestra nombres comerciales como **Epic Games** en las confirmaciones. El juego puede seguir arrancando mientras usas otros comandos. Di «estado del arranque» para consultar el resultado.
+
+La bandeja permite cambiar entre reconocimiento local en español e inglés. Los nombres extranjeros dentro de una orden española reciben sugerencias contextuales. Puedes guardar voluntariamente una corrección desde la bandeja. La X oculta JARVIS. Para liberar el micrófono y terminar la sesión, elige **Salir completamente**.
+
+[Comandos y pruebas físicas](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/Guia.md#comprobaciones-físicas-de-065-rc2) · [Iconos y sustitución de instancias](https://github.com/GTAlex1/Jarvis/blob/dev/0.6.5-universal-apps/docs/bandeja.md)
 
 ## Órdenes y atajos
 

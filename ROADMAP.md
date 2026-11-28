@@ -21,6 +21,12 @@ El propietario registró **8 pruebas correctas, 1 parcialmente correcta, 3 falli
 
 Sigue pendiente comprobar las activaciones accidentales durante conversaciones y ampliar las pruebas de seguridad con más escenarios y hablantes. También queda por mejorar el reconocimiento de órdenes naturales, incluidas variantes coloquiales como «cerrá Spotify» y «quítame Spotify». La revisión sigue destinada a validación interna.
 
+### Resultados de la primera candidata de 0.6.5
+
+En rc.1, la referencia a game_roots interrumpió el catálogo en los equipos que tenían ejecutables indexados. El propietario reprodujo el fallo con Poke Gacha Online, Rocket League y Genshin Impact. También encontró nombres técnicos en las confirmaciones y errores al transcribir nombres extranjeros. rc.2 corrige el ámbito de game_roots, incorpora identidades de ventana, sugiere nombres usando el catálogo y ofrece un modelo inglés local. La comprobación física de Epic y HoYoPlay sigue pendiente.
+
+La rc.2 adelanta solo el reconocimiento necesario para resolver aplicaciones y juegos. La comprensión conversacional, los acentos y expresiones regionales siguen en 0.9.0.1.
+
 ### Detección y ejecución de videojuegos
 
 | Resultado físico de 0.6.4.1 | Qué se comprobará en 0.6.5 |

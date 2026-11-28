@@ -227,3 +227,15 @@ Para empezar a probar, consulta el [listado de órdenes](README.md#órdenes-de-w
 3. Prueba Minecraft para Windows y, si está instalado, Minecraft Java; comprueba que el launcher y el juego se distinguen. Prueba también un título de EA, Ubisoft, Battle.net, GOG y Game Pass por cada cliente del que dispongas.
 4. Añade una carpeta portable de otra unidad, lanza una aplicación y actualiza después de quitarla. Prueba dos ventanas de VS Code, los alias de Chrome/Edge y los movimientos a un segundo monitor. Comprueba el aviso de guardar al cerrar un documento editado.
 5. Desde el panel oculto, prueba nombres y alias por voz, rechazos de hablantes ajenos y confirmaciones de acciones protegidas. Haz la comparación con 0.6.4.2 si reaparece un fallo físico.
+
+
+### Comprobaciones físicas de 0.6.5-rc.2
+
+1. Descarga y descomprime el artefacto Windows x64. Ejecuta JARVIS.exe. Si una versión anterior sigue abierta, ciérrala desde su bandeja y pulsa **Reintentar**. La X oculta el panel.
+2. Con Chrome o Edge abierto, prueba abrir, mover y cerrar una PWA de Inicio, como Poke Gacha Online. Confirma que la ventana del navegador y otras PWA siguen abiertas al cerrar la elegida.
+3. Prueba Rocket League por Epic y Genshin desde HoYoPlay. Abre también un juego de Steam. Consulta «estado del arranque» mientras abre el juego. Si el cliente exige pulsar **Jugar**, comprueba que JARVIS no declare el éxito antes de observar el juego.
+4. Prueba por voz los nombres Rocket League, Fortnite, Genshin Impact y Epic Games sin cambiar tu pronunciación. Prueba una confirmación como «sí, adelante» y un rechazo. Guarda una corrección desde la bandeja y luego edítala o elimínala en **Adaptación de voz**.
+5. Activa **Voz en inglés…**, prueba «Jarvis, open Firefox» y una orden con pausa. Vuelve a español y repite la verificación del hablante, Libertad, las órdenes en varios monitores y los avisos de guardar.
+6. Verifica los seis iconos en bandeja clara y oscura. Prueba reinicio, salida completa y apertura con otra instancia activa.
+
+La redacción contextual y el seguimiento de arranque tienen pruebas automatizadas. El reconocimiento del acento, las PWA de tu navegador y los juegos instalados requieren la comprobación anterior.

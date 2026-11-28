@@ -1,5 +1,14 @@
 # Cambios de JARVIS
 
+## 0.6.5-rc.2 · Correcciones de la candidata
+
+- Corrige la referencia a game_roots sin inicializar. Cada fuente del catálogo puede fallar sin esconder las demás.
+- Recupera las PWA del menú Inicio y separa la identidad de su ventana de la del navegador. Usa nombres comerciales en los avisos y conserva la distinción entre ventanas.
+- Añade sugerencias de nombres basadas en el catálogo y un modelo inglés opcional. Una propuesta aproximada requiere confirmación. Los alias se guardan solo tras aprobación explícita.
+- Comprueba arranques lentos en segundo plano. Distingue la apertura del cliente, el inicio del proceso y la ventana del juego.
+- Incorpora seis iconos de bandeja, menú de reinicio y salida, aviso de ejecución residente e intercambio cooperativo entre versiones compatibles.
+- Queda pendiente la validación física de PWA, juegos, detección contextual con hablantes y bandeja en el equipo del propietario.
+
 ## 0.6.5-rc.1 · Candidata de validación interna
 
 - Añade un catálogo persistente de aplicaciones y juegos. Incorpora Inicio, escritorio, registro, paquetes y carpetas portables configurables.

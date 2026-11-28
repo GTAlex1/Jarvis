@@ -17,7 +17,7 @@ Desde la versión 0.5.0, la X oculta el panel y JARVIS sigue abierto en el área
 - **Iniciar con Windows** está desactivado por defecto. Al activarlo, JARVIS se abre en la bandeja cuando inicias sesión con tu cuenta, sin pedir permisos de administrador. Si cambias el ejecutable de carpeta, vuelve a activar la opción desde la nueva ubicación. También puedes gestionarla desde **Configuración → Aplicaciones → Inicio** de Windows.
 - **Salir de JARVIS** cierra todo el programa. También puedes escribir `salir` en el panel.
 
-La animación se detiene al ocultar o minimizar el panel.
+Al cerrar el panel por primera vez, JARVIS avisa de que sigue en segundo plano. El icono cambia de expresión y color al esperar, escuchar, procesar, ejecutar, detectar un error o desactivar el micrófono. El menú permite cambiar la escucha, buscar actualizaciones, reiniciar y **Salir completamente**. [Vista previa y funcionamiento de la bandeja](docs/bandeja.md)
 
 ## Usar JARVIS por voz
 
@@ -27,6 +27,10 @@ La animación se detiene al ocultar o minimizar el panel.
 4. Comprueba el estado en el panel o en el icono de la bandeja. Si un turno es demasiado breve para verificarlo, usa una frase más larga, como «Sí, continúa con la explicación».
 
 Puedes decir «Cerrá Spotify», «Ponme la calculadora» o «Reiníciame el ordenador». Las coincidencias exactas con una misma identidad de aplicación se abren directamente si lo permite tu perfil. Las coincidencias aproximadas se confirman.
+
+### Idioma y nombres de aplicaciones
+
+El modelo español sigue activo por defecto. Puedes pronunciar nombres extranjeros dentro de una orden española. JARVIS compara lo que oye con las aplicaciones descubiertas y pide confirmación ante coincidencias aproximadas. Para usar órdenes como «open Firefox» o «move VSCode to the left» en inglés, elige **Voz en inglés…** en la bandeja. La primera vez se descarga un modelo de 41 MB. [Reconocimiento local y límites](docs/reconocimiento-contextual.md)
 
 ### Adaptación de voz
 
@@ -73,7 +77,7 @@ Para publicar una actualización, incrementa `VERSION` en `updater.py`. GitHub A
 
 ## Catálogo de aplicaciones y juegos
 
-La candidata **0.6.5-rc.1** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. Para añadir una carpeta de otro disco, usa **Añadir carpeta de aplicaciones…** en la bandeja.
+La candidata **0.6.5-rc.2** incorpora aplicaciones de Inicio, Microsoft Store, el escritorio, el registro y tus carpetas portables. El catálogo funciona en segundo plano, incluso con el panel oculto. Usa **Aplicaciones** para ver el catálogo, **Ventanas** para ver lo que está abierto y `actualiza aplicaciones` después de instalar o desinstalar algo. El catálogo incluye accesos PWA con identidad propia. Consulta el resultado posterior con «estado del arranque». Para añadir una carpeta de otro disco, usa **Añadir carpeta de aplicaciones…** en la bandeja.
 
 Puedes probar `abre el visual`, `abre el navegador`, `pon el honkai en la segunda pantalla` o `open the calculator` con los nombres y alias que ofrezca tu instalación. JARVIS te pedirá elegir si hay varios destinos o si reconoce un nombre aproximado. Los launchers pueden requerir sesión, actualización o pulsar **Jugar**. JARVIS distingue entre solicitar el arranque y observar el juego abierto.
 
@@ -84,7 +88,7 @@ Consulta la [cobertura por proveedor](docs/catalogo-aplicaciones.md), la [guía 
 | Función | Ejemplos |
 | --- | --- |
 | Abrir una aplicación o juego | `abre VSCode`, `abre Chrome` |
-| Ver y actualizar el catálogo | `aplicaciones`, `actualiza aplicaciones`; `ventanas` muestra lo que está abierto |
+| Ver el último arranque | «estado del arranque» o «launch status» |\n| Ver y actualizar el catálogo | `aplicaciones`, `actualiza aplicaciones`; `ventanas` muestra lo que está abierto |
 | Cerrar una ventana | `cierra Chrome`, `cierra el Bloc de notas` |
 | Minimizar y restaurar | `minimiza Chrome`, `restaura Firefox` |
 | Primer plano | `enfoca Spotify`, `activa VSCode` |

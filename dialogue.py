@@ -250,7 +250,7 @@ class Dialogue:
         elif key in {"no, gracias", "cancela la conversacion", "cancela la orden", "para de hablar"}:
             key = "cancela"
         if self.verbal:
-            if key in YES | {"si confirmo", "si confirmo la orden", "si, confirma la orden", "confirmo la orden"}:
+            if key in YES | {"si confirmo", "si confirmo la orden", "si, confirma la orden", "confirmo la orden", "confirm the action", "yes confirm the action"}:
                 ticket = self.verbal
                 self.clear()
                 return Turn(command=ApprovalAnswer(ticket, True))

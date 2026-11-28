@@ -45,6 +45,13 @@ ACTIONS = {
     "centra": "center", "centrar": "center",
 }
 SYSTEM_COMMANDS = {
+    "show desktop": "desktop", "task view": "task_view", "minimize all windows": "minimize_all",
+    "restore all windows": "restore_all", "lock the computer": "lock", "lock computer": "lock",
+    "shut down the computer": "shutdown", "shut down computer": "shutdown",
+    "restart the computer": "restart", "restart computer": "restart",
+    "volume up": "volume_up", "volume down": "volume_down", "pause music": "play_pause",
+    "play music": "play_pause", "next track": "next_track", "previous track": "previous_track",
+    "take a screenshot": "screenshot", "capture the entire screen": "screenshot_full",
     "apaga el ordenador": "shutdown", "apaga el equipo": "shutdown", "apaga el pc": "shutdown",
     "apagar el ordenador": "shutdown", "apagar el equipo": "shutdown",
     "reinicia el ordenador": "restart", "reinicia el equipo": "restart", "reinicia el pc": "restart",
@@ -100,6 +107,8 @@ def parse(command):
         return (LIST_COMMANDS[value],)
     if value in SYSTEM_COMMANDS:
         return "system", SYSTEM_COMMANDS[value]
+    if ENGLISH_VERB.match(value):
+        value = re.sub(r" (?:to|on) (?:the )?(?:screen|monitor) (\d+)$", r" monitor \1", value)
     if match := ORDINAL_SCREEN.search(value):
         value = value[:match.start()] + f" {match[2]} {ORDINAL_SCREENS[match[1]]}"
     if match := SPOKEN_SCREEN.search(value):

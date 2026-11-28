@@ -1,6 +1,6 @@
 # Catálogo de aplicaciones y videojuegos de JARVIS
 
-Estado de la versión 0.6.5: candidata de validación interna. La cobertura depende de los metadatos que cada cliente exponga en el equipo.
+Estado de la versión 0.6.5-rc.2: candidata de validación interna. La cobertura depende de los metadatos que cada cliente exponga en el equipo.
 
 ## Arquitectura
 
@@ -23,8 +23,10 @@ Estado de la versión 0.6.5: candidata de validación interna. La cobertura depe
 | Ubisoft Connect | Accesos directos, claves de instalación y productos que incluyen el nombre | Solicitud `uplay://launch/` con el ID instalado o acceso directo. |
 | Battle.net | Accesos directos con destino a un producto y metadatos de desinstalación | Solicita la apertura por el cliente cuando encuentra un acceso válido. No garantiza que el cliente admita el arranque directo. |
 | GOG Galaxy | Accesos directos y registro `GOG.com\Games` | Usa el acceso al producto o el ejecutable de un instalador independiente cuando está registrado bajo la carpeta del juego. |
-| Independientes | AppsFolder, accesos locales, registro y carpetas portables | Lanza el ejecutable o acceso validado localmente. |
+| PWA de navegador | Entradas de Inicio y accesos de Chrome o Edge con AppUserModelID propio | Windows abre su acceso registrado. La ventana se comprueba por su identidad, sin contar una ventana normal del navegador. |\n| Independientes | AppsFolder, accesos locales, registro y carpetas portables | Lanza el ejecutable o acceso validado localmente. |
 
-El índice nunca ejecuta `UninstallString`, ni toma la frase del usuario como ruta, argumentos o script. No se fuerzan cierres, no se automatizan clics de inicio de sesión ni se alteran los sistemas anticheat. Si el juego tarda más de ocho segundos, se puede abrir más tarde aunque JARVIS diga que no pudo comprobarlo. Un proceso observado tampoco confirma que la partida o la pantalla principal esté lista. En el comando «pantalla completa» se comprueba maximización de Windows; el modo exclusivo dependerá del propio juego. El destino «navegador» presenta opciones si hay varios compatibles.
+El índice nunca ejecuta `UninstallString`, ni toma la frase del usuario como ruta, argumentos o script. No se fuerzan cierres, no se automatizan clics de inicio de sesión ni se alteran los sistemas anticheat. Los juegos tienen 45 segundos de comprobación asíncrona. Si aparece un proceso del juego sin ventana, el plazo puede extenderse hasta 30 segundos desde ese momento. Puedes seguir dando órdenes y consultar «estado del arranque». Un proceso observado tampoco confirma que la partida o la pantalla principal esté lista. En el comando «pantalla completa» se comprueba maximización de Windows; el modo exclusivo dependerá del propio juego. El destino «navegador» presenta opciones si hay varios compatibles.
 
 Referencias: [identidades de aplicación en Windows](https://learn.microsoft.com/es-es/windows/configuration/store/find-aumid), [registro de aplicaciones Win32](https://learn.microsoft.com/en-us/windows/win32/shell/app-registration), [activación por protocolo de Epic](https://dev.epicgames.com/docs/epic-games-store/protocol-activation) y [flujo de inicio de Riot](https://support.riotgames.com/en-us/riot/client/riot-client-faq).
+
+Cada lectura se aísla por fuente. Una fuente fallida puede recuperar fichas válidas de la generación anterior. Un acceso a Minecraft Java puede abrir la selección del launcher; en esa ruta, JARVIS no verifica instancias Java genéricas. La edición Bedrock usa la identidad registrada en Windows cuando está disponible. Se conservan las rutas específicas de los clientes y sus comprobaciones de autenticación y anticheat.
