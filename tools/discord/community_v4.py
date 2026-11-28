@@ -27,7 +27,7 @@ async def community(guild,client):
     if existing.get("prompts"):
         print("Se conservan preguntas de incorporación existentes.")
     else:
-        payload={"prompts":[{"title":"¿Qué te interesa de Nexora?","type":0,"single_select":False,"required":False,"in_onboarding":True,"options":[{"title":title,"description":desc,"channel_ids":[str(channel(guild,n).id) for n in channels],"role_ids":[]} for title,desc,channels in [("Gaming","Juegos y conversaciones",["gaming","memes"]),("Desarrollo","Novedades y sugerencias",["roadmap","sugerencias"]),("Comunidad","Conoce a otros miembros",["general","presentaciones"])]]}],"default_channel_ids":[str(c.id) for c in defaults],"enabled":True,"mode":0}
+        payload={"prompts":[{"id":"0","title":"¿Qué te interesa de Nexora?","type":0,"single_select":False,"required":False,"in_onboarding":True,"options":[{"id":str(i+1),"title":title,"description":desc,"channel_ids":[str(channel(guild,n).id) for n in channels],"role_ids":[]} for i,(title,desc,channels) in enumerate([("Gaming","Juegos y conversaciones",["gaming","memes"]),("Desarrollo","Novedades y sugerencias",["roadmap","sugerencias"]),("Comunidad","Conoce a otros miembros",["general","presentaciones"])])]}],"default_channel_ids":[str(c.id) for c in defaults],"enabled":True,"mode":0}
         await client.http.request(Route("PUT","/guilds/{guild_id}/onboarding",guild_id=guild.id),json=payload)
         print("OK incorporación y preguntas sin roles privilegiados")
     rules=await guild.fetch_automod_rules()
